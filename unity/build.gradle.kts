@@ -16,7 +16,7 @@ repositories {
 }
 
 dependencies {
-	implementation("net.jpountz.lz4:lz4-java:1.8.0")
+	implementation("org.lz4:lz4-java:1.8.0")
 	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
