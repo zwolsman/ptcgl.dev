@@ -44,9 +44,12 @@ class PlanService(
         val setManifestId     = "set-manifest_0.0"
         val bundleManifestId  = "asset-bundle-manifest_0.0"
 
+        val cardDbManifestId  = "card-databases-manifest_0.0"
+
         // --- 1. Fetch control-plane docs (always fetch to get revisions) ---
-        log.info("Fetching config docs: {}, {}", setManifestId, bundleManifestId)
-        val (setManifestDoc, bundleManifestDoc) = configClient.getMultiple(setManifestId, bundleManifestId)
+        log.info("Fetching config docs: {}, {}, {}", setManifestId, bundleManifestId, cardDbManifestId)
+        val (setManifestDoc, bundleManifestDoc, cardDbManifestDoc) =
+            configClient.getMultiple(setManifestId, bundleManifestId, cardDbManifestId)
 
         // --- 2. Sets (skip if unchanged) ---
         val allSets: List<SetRecord>
@@ -85,13 +88,29 @@ class PlanService(
             else -> allSets.map { it.id }
         }
 
+        // Parse card-databases-manifest: templates look like "sv1_1_{0}", "me4_2_{0}", etc.
+        // {0} is replaced with the locale to form the doc ID suffix.
+        val cardDbEntry = cardDbManifestDoc["card-databases-manifest"]
+            ?: error("card-databases-manifest missing 'card-databases-manifest' key")
+        val allTemplates = mapper.readValue(cardDbEntry.payloadBase64, List::class.java)
+            .filterIsInstance<String>()
+        log.info("Found {} card-DB templates", allTemplates.size)
+
         log.info("Processing card databases for {} set(s): {}", targetCodes.size, targetCodes)
         for (setCode in targetCodes) {
-            val docId = "card-database-${setCode}_${locale}_0.0"
-            try {
-                processCardDatabase(docId, setCode, locale)
-            } catch (e: Exception) {
-                log.warn("Skipping card-database for set={}: {}", setCode, e.message)
+            // Templates whose prefix matches the set code, e.g. "me4_1_{0}" for setCode "me4"
+            val templates = allTemplates.filter { it.startsWith("${setCode}_") }
+            if (templates.isEmpty()) {
+                log.warn("No card-DB templates found for set={}", setCode)
+                continue
+            }
+            for (template in templates) {
+                val docId = "card-database-${template.replace("{0}", locale)}_0.0"
+                try {
+                    processCardDatabase(docId, setCode, locale)
+                } catch (e: Exception) {
+                    log.warn("Skipping card-database {}: {}", docId, e.message)
+                }
             }
         }
 
