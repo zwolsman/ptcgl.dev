@@ -12,9 +12,14 @@ private val log = LoggerFactory.getLogger(PlanRunner::class.java)
 /**
  * Phase A pipeline runner.
  *
- * Activated with --plan on the command line:
+ * Flags:
+ *   --plan              required to activate
+ *   --latest            process only the set with the most recent release date
+ *   --set=<code>        process only the named set (e.g. --set=sv8)
+ *
+ * Example:
  *   SPRING_PROFILES_ACTIVE=local RAINIER_PTCS_TOKEN=<token> \
- *     ./gradlew :app:bootRun --args='--plan'
+ *     ./gradlew :app:bootRun --args='--plan --latest'
  */
 @Component
 @Order(10)
@@ -22,8 +27,12 @@ class PlanRunner(private val planService: PlanService) : ApplicationRunner {
 
     override fun run(args: ApplicationArguments) {
         if (!args.containsOption("plan")) return
-        log.info("Starting Phase A plan…")
-        planService.run(locale = "en")
+
+        val setFilter = args.getOptionValues("set")?.firstOrNull()
+        val latestOnly = args.containsOption("latest")
+
+        log.info("Starting Phase A plan… (setFilter={}, latestOnly={})", setFilter, latestOnly)
+        planService.run(locale = "en", setFilter = setFilter, latestOnly = latestOnly)
         log.info("Phase A plan complete.")
     }
 }

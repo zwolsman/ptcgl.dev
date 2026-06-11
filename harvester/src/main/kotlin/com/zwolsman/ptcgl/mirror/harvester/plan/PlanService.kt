@@ -6,6 +6,7 @@ import com.zwolsman.ptcgl.mirror.harvester.db.AssetLedgerRepository
 import com.zwolsman.ptcgl.mirror.harvester.db.CardRepository
 import com.zwolsman.ptcgl.mirror.harvester.db.ConfigRevisionRepository
 import com.zwolsman.ptcgl.mirror.harvester.db.SetRepository
+import com.zwolsman.ptcgl.mirror.harvester.domain.SetRecord
 import com.zwolsman.ptcgl.mirror.harvester.normalize.CardDbNormalizer
 import com.zwolsman.ptcgl.mirror.harvester.normalize.SetManifestParser
 import com.zwolsman.ptcgl.mirror.rainier.cdn.AssetNotFoundException
@@ -17,6 +18,7 @@ import com.zwolsman.ptcgl.unity.manifest.AssetManifestExtractor
 import com.zwolsman.ptcgl.unity.serialized.SerializedFileParser
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import java.time.LocalDate
 
 private val log = LoggerFactory.getLogger(PlanService::class.java)
 private val mapper = jacksonObjectMapper()
@@ -31,8 +33,12 @@ class PlanService(
     private val revisionRepo: ConfigRevisionRepository,
 ) {
 
-    fun run(locale: String = "en") {
-        log.info("Phase A starting (locale={})", locale)
+    /**
+     * @param setFilter  if non-null, only process this set's card database (e.g. "sv8")
+     * @param latestOnly if true, resolve the set with the most recent release date and process only that one
+     */
+    fun run(locale: String = "en", setFilter: String? = null, latestOnly: Boolean = false) {
+        log.info("Phase A starting (locale={}, setFilter={}, latestOnly={})", locale, setFilter, latestOnly)
         assetRepo.reclaimExpiredLeases()
 
         val setManifestId     = "set-manifest_0.0"
@@ -43,14 +49,16 @@ class PlanService(
         val (setManifestDoc, bundleManifestDoc) = configClient.getMultiple(setManifestId, bundleManifestId)
 
         // --- 2. Sets (skip if unchanged) ---
+        val allSets: List<SetRecord>
         if (revisionRepo.isUpToDate(setManifestId, setManifestDoc.revision)) {
-            log.info("set-manifest unchanged (rev={}), skipping sets", setManifestDoc.revision)
+            log.info("set-manifest unchanged (rev={}), skipping set upsert", setManifestDoc.revision)
+            allSets = SetManifestParser.parse(setManifestDoc)
         } else {
             log.info("Processing set-manifest (rev={})", setManifestDoc.revision)
-            val sets = SetManifestParser.parse(setManifestDoc)
-            log.info("Found {} sets", sets.size)
-            setRepo.upsertSets(sets)
-            sets.forEach { s ->
+            allSets = SetManifestParser.parse(setManifestDoc)
+            log.info("Found {} sets", allSets.size)
+            setRepo.upsertSets(allSets)
+            allSets.forEach { s ->
                 setRepo.upsertLocalizations(listOf(
                     com.zwolsman.ptcgl.mirror.harvester.domain.SetLocalizationRecord(s.id, locale, s.name)
                 ))
@@ -59,13 +67,26 @@ class PlanService(
             log.info("Sets upserted")
         }
 
-        // --- 3. Card databases per set ---
-        val setManifestEntry = setManifestDoc["manifest"]
-            ?: error("set-manifest missing 'manifest' key")
-        val setCodes = mapper.readValue(setManifestEntry.payloadBase64, List::class.java)
-            .filterIsInstance<String>()
+        // --- 3. Card databases ---
+        // Resolve which set codes to process
+        val targetCodes: List<String> = when {
+            setFilter != null -> {
+                require(allSets.any { it.id == setFilter }) {
+                    "Unknown set code '$setFilter'. Known: ${allSets.map { it.id }}"
+                }
+                listOf(setFilter)
+            }
+            latestOnly -> {
+                val latest = allSets.maxByOrNull { it.releaseDate ?: LocalDate.MIN }
+                    ?: error("set-manifest is empty")
+                log.info("Latest set by release date: {} ({})", latest.id, latest.releaseDate)
+                listOf(latest.id)
+            }
+            else -> allSets.map { it.id }
+        }
 
-        for (setCode in setCodes) {
+        log.info("Processing card databases for {} set(s): {}", targetCodes.size, targetCodes)
+        for (setCode in targetCodes) {
             val docId = "card-database-${setCode}_${locale}_0.0"
             try {
                 processCardDatabase(docId, setCode, locale)
