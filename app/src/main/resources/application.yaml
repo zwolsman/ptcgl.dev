@@ -12,5 +12,8 @@ rainier:
   client-id: "tpci-tcg-app"
   # PTCS OAuth2 access token (from browser login); used once to mint a studio JWT
   ptcs-token: ${RAINIER_PTCS_TOKEN}
-  # CDN base URL for asset bundles — from GameSettings.json contentpath (hardcoded for now)
-  content-path: https://cdn.studio-prod.pokemon.com/rainier/content/poke_default_all/default/
+  # Unity game version — used to fetch GameSettings.json which supplies the CDN content path
+  app-version: "1.39.0"
+  # Platform key used to select the content path from GameSettings.json
+  # e.g. osxplayer, windowsplayer, android, iphoneplayer
+  platform: osxplayer

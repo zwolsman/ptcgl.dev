@@ -2,6 +2,7 @@ package com.zwolsman.ptcgl.mirror
 
 import com.zwolsman.ptcgl.mirror.rainier.auth.AuthClient
 import com.zwolsman.ptcgl.mirror.rainier.cdn.CdnClient
+import com.zwolsman.ptcgl.mirror.rainier.cdn.GameSettingsClient
 import com.zwolsman.ptcgl.mirror.rainier.config.ConfigDocClient
 import okhttp3.OkHttpClient
 import org.slf4j.LoggerFactory
@@ -17,7 +18,8 @@ class RainierConfig(
     @Value("\${rainier.client-type-access-key}") private val clientTypeAccessKey: String,
     @Value("\${rainier.client-id}")              private val clientId: String,
     @Value("\${rainier.ptcs-token}")             private val ptcsToken: String,
-    @Value("\${rainier.content-path}")           private val contentPath: String,
+    @Value("\${rainier.app-version}")            private val appVersion: String,
+    @Value("\${rainier.platform}")               private val platform: String,
 ) {
 
     @Bean
@@ -32,5 +34,9 @@ class RainierConfig(
     }
 
     @Bean
-    fun cdnClient(http: OkHttpClient): CdnClient = CdnClient(http, contentPath)
+    fun cdnClient(http: OkHttpClient): CdnClient {
+        val contentPath = GameSettingsClient(http).fetch(appVersion).contentPath(platform)
+        log.info("CDN content path ({}): {}", platform, contentPath)
+        return CdnClient(http, contentPath)
+    }
 }
