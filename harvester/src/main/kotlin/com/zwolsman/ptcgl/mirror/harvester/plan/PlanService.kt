@@ -7,6 +7,7 @@ import com.zwolsman.ptcgl.mirror.harvester.db.CardRepository
 import com.zwolsman.ptcgl.mirror.harvester.db.ConfigRevisionRepository
 import com.zwolsman.ptcgl.mirror.harvester.db.SetRepository
 import com.zwolsman.ptcgl.mirror.harvester.domain.SetRecord
+import com.zwolsman.ptcgl.mirror.harvester.download.AssetDownloadService
 import com.zwolsman.ptcgl.mirror.harvester.normalize.CardDbNormalizer
 import com.zwolsman.ptcgl.mirror.harvester.normalize.SetManifestParser
 import com.zwolsman.ptcgl.mirror.rainier.cdn.AssetNotFoundException
@@ -31,6 +32,7 @@ class PlanService(
     private val cardRepo: CardRepository,
     private val assetRepo: AssetLedgerRepository,
     private val revisionRepo: ConfigRevisionRepository,
+    private val assetDownloadService: AssetDownloadService,
 ) {
 
     /**
@@ -144,7 +146,12 @@ class PlanService(
         assetRepo.markStale(activeAssets)
 
         revisionRepo.save(bundleManifestId, bundleManifestDoc.revision)
-        log.info("Phase A complete. Ledger has {} desired assets.", desired.size)
+        log.info("Phase A ledger complete. {} desired assets in ledger.", desired.size)
+
+        // --- 6. Download PENDING assets from CDN → S3 ---
+        log.info("Phase B: downloading assets from CDN to S3…")
+        val downloaded = assetDownloadService.downloadAll()
+        log.info("Phase B complete. {} assets uploaded to S3.", downloaded)
     }
 
     private fun processCardDatabase(docId: String, setCode: String, locale: String) {
