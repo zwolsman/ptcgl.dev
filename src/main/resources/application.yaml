@@ -1,15 +1,10 @@
 spring:
   application:
     name: mirror
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
 
 rainier:
   base-url: https://api.studio-prod.pokemon.com
-  # Required: from the game client decompile
-  client-type-access-key: ${RAINIER_CLIENT_TYPE_ACCESS_KEY}
-  client-id: ${RAINIER_CLIENT_ID}
+  client-type-access-key: "421d8904-0236-4ab4-94f5-a8a84aeb3f7b"
+  client-id: "tpci-tcg-app"
   # PTCS OAuth2 access token (from browser login); used once to mint a studio JWT
   ptcs-token: ${RAINIER_PTCS_TOKEN}

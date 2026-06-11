@@ -42,11 +42,11 @@ class VerifyCardDbRunner(
         val manifestDoc = configClient.getMultiple("card-databases-manifest_0.0").first()
         log.info("Manifest revision: {}", manifestDoc.revision)
 
-        val manifestKey = manifestDoc.key("card-databases-manifest")
-            ?: error("Key 'card-databases-manifest' not found in doc. Keys present: ${manifestDoc.keys.map { it.key }}")
+        val manifestKey = manifestDoc["card-databases-manifest"]
+            ?: error("Key 'card-databases-manifest' not found. Keys: ${manifestDoc.data.keys}")
 
         // Templates look like "sv1_1_{0}" — pick first as the probe
-        val templates = mapper.readValue<List<String>>(manifestKey.contentString)
+        val templates = mapper.readValue<List<String>>(manifestKey.contentString ?: manifestKey.payloadBase64)
         log.info("Found {} set templates. First few: {}", templates.size, templates.take(5))
 
         // Pick sv1 if available, otherwise the first template
@@ -58,24 +58,27 @@ class VerifyCardDbRunner(
         val cardDbDoc = configClient.getMultiple(docId).first()
         log.info("Card DB revision: {}", cardDbDoc.revision)
 
-        val tableKey = cardDbDoc.key("table")
-            ?: error("Key 'table' not found. Keys present: ${cardDbDoc.keys.map { it.key }}")
+        val tableKey = cardDbDoc["table"]
+            ?: error("Key 'table' not found. Keys present: ${cardDbDoc.data.keys}")
 
         // Save raw base64 payload as a fixture for offline testing
         val fixturePath = Path.of("src/test/resources/fixtures/card-db-sv1-en.b64")
         Files.createDirectories(fixturePath.parent)
-        Files.writeString(fixturePath, tableKey.contentString)
+        Files.writeString(fixturePath, tableKey.payloadBase64)
         log.info("Raw base64 payload saved to {}", fixturePath)
 
-        // Also save the decompressed bytes for easier debugging
-        val rawBytes = Base64.getDecoder().decode(tableKey.contentString)
-        val decompressed = com.zwolsman.ptcgl.mirror.rainier.codec.QuickLz.decompress(rawBytes)
-        Files.write(Path.of("src/test/resources/fixtures/card-db-sv1-en.bin"), decompressed)
-        log.info("Decompressed {} bytes → {} bytes", rawBytes.size, decompressed.size)
+        // Also save the decoded DataTable bytes for easier debugging
+        val rawBytes = Base64.getDecoder().decode(tableKey.payloadBase64)
+        val engineByte = rawBytes[0].toInt() and 0xFF
+        log.info("Engine byte: 0x{} ({})", engineByte.toString(16), if (engineByte == 0) "raw" else "QuickLZ")
+        val dataBytes = if (engineByte == 0x00) rawBytes.copyOfRange(1, rawBytes.size)
+                        else com.zwolsman.ptcgl.mirror.rainier.codec.QuickLz.decompress(rawBytes.copyOfRange(1, rawBytes.size))
+        Files.write(Path.of("src/test/resources/fixtures/card-db-sv1-en.bin"), dataBytes)
+        log.info("Binary payload: {} bytes", dataBytes.size)
 
         // --- Decode and inspect ---
         log.info("Decoding DataTable…")
-        val table = DataTableCodec.decodeFromBase64(tableKey.contentString)
+        val table = DataTableCodec.decodeFromBase64(tableKey.payloadBase64)
 
         log.info("Table name  : {}", table.name)
         log.info("Row count   : {}", table.rows.size)

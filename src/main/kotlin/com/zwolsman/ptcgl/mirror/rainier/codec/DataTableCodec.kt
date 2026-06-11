@@ -20,11 +20,28 @@ object DataTableCodec {
         val rows: List<Map<String, Any?>>,
     )
 
-    /** Full pipeline: base64 → QuickLZ → DataTable. */
-    fun decodeFromBase64(contentString: String): Table {
-        val compressed = Base64.getDecoder().decode(contentString)
-        val raw = QuickLz.decompress(compressed)
-        return parse(DotNetBinaryReader(raw))
+    /**
+     * Full pipeline: base64 → (optional QuickLZ) → DataTable.
+     *
+     * The binary payload has a 1-byte prefix from BufferedRealtimeCompressionEngine:
+     *   0x00 = raw (not compressed): DataTable follows immediately at offset 1
+     *   other = QuickLZ compressed: QuickLZ header + data follows at offset 1
+     *
+     * This matches empirical observation: the first byte is 0x00 for card DB docs
+     * and the DataTable binary (TableName, colCount, columns, rowCount, rows) begins at offset 1.
+     */
+    fun decodeFromBase64(payloadBase64: String): Table {
+        val raw = Base64.getDecoder().decode(payloadBase64)
+        require(raw.isNotEmpty()) { "Empty payload" }
+        val engineByte = raw[0].toInt() and 0xFF
+        val dataBytes = if (engineByte == 0x00) {
+            // not compressed — DataTable starts at offset 1
+            raw.copyOfRange(1, raw.size)
+        } else {
+            // QuickLZ compressed — skip engine byte, then decompress
+            QuickLz.decompress(raw.copyOfRange(1, raw.size))
+        }
+        return parse(DotNetBinaryReader(dataBytes))
     }
 
     fun parse(reader: DotNetBinaryReader): Table {
@@ -49,26 +66,25 @@ object DataTableCodec {
 
     private fun readValue(reader: DotNetBinaryReader, typeName: String): Any? =
         when (typeName) {
-            "Boolean"              -> reader.readBoolean()
-            "Byte", "CardCategory" -> reader.readUByte()
-            "SByte"               -> reader.readByte().toInt()
-            "Int16"               -> reader.readInt16()
-            "UInt16"              -> reader.readUInt16()
-            "Int32"               -> reader.readInt32()
-            "UInt32"              -> reader.readUInt32()
-            "Int64"               -> reader.readInt64()
-            "UInt64"              -> reader.readUInt64()
-            "Single"              -> reader.readSingle()
-            "Double"              -> reader.readDouble()
-            "Char"                -> reader.readUInt16().toChar()
-            "String"              -> reader.readString()
-            "Byte[]"              -> reader.readBytes(reader.readInt32())
-            // .NET DateTime: Int64 ticks (100 ns since 0001-01-01)
-            "DateTime"            -> reader.readInt64()
-            "Decimal"             -> reader.readDecimal()
-            "Guid"                -> reader.readGuid()
-            // .NET TimeSpan: Int64 ticks
-            "TimeSpan"            -> reader.readInt64()
+            "Boolean",   "System.Boolean"  -> reader.readBoolean()
+            "Byte",      "System.Byte",
+            "CardCategory"                 -> reader.readUByte()
+            "SByte",     "System.SByte"   -> reader.readByte().toInt()
+            "Int16",     "System.Int16"   -> reader.readInt16()
+            "UInt16",    "System.UInt16"  -> reader.readUInt16()
+            "Int32",     "System.Int32"   -> reader.readInt32()
+            "UInt32",    "System.UInt32"  -> reader.readUInt32()
+            "Int64",     "System.Int64"   -> reader.readInt64()
+            "UInt64",    "System.UInt64"  -> reader.readUInt64()
+            "Single",    "System.Single"  -> reader.readSingle()
+            "Double",    "System.Double"  -> reader.readDouble()
+            "Char",      "System.Char"    -> reader.readUInt16().toChar()
+            "String",    "System.String"  -> reader.readString()
+            "Byte[]"                      -> reader.readBytes(reader.readInt32())
+            "DateTime",  "System.DateTime"-> reader.readInt64()  // ticks since 0001-01-01
+            "Decimal",   "System.Decimal" -> reader.readDecimal()
+            "Guid",      "System.Guid"    -> reader.readGuid()
+            "TimeSpan",  "System.TimeSpan"-> reader.readInt64()  // ticks
             else -> error("Unknown DataTable column type: '$typeName' — add handling for this type")
         }
 }
