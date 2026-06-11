@@ -12,7 +12,7 @@ private val mapper = jacksonObjectMapper()
  * Parses set-manifest_0.0 config doc into [SetRecord] list.
  *
  * set-manifest_0.0 structure:
- *   key "manifest"   → JSON array of set codes: ["ec", "sv1", "swsh12", ...]
+ *   key "manifest"   → JSON object: { "sets": ["ec", "sv1", "swsh12", ...] }
  *   key "setDetails" → JSON object: { "sv1": { SeriesId, OAReleaseDate, ... }, ... }
  *
  * OAReleaseDate is an OLE Automation serial date (days since 1899-12-30).
@@ -23,7 +23,10 @@ object SetManifestParser {
         val manifestEntry  = doc["manifest"]  ?: error("set-manifest missing 'manifest' key")
         val setDetailsEntry = doc["setDetails"] ?: error("set-manifest missing 'setDetails' key")
 
-        val codes      = mapper.readValue<List<String>>(manifestEntry.payloadBase64)
+        @Suppress("UNCHECKED_CAST")
+        val codes = (mapper.readValue<Map<String, Any?>>(manifestEntry.payloadBase64)["sets"] as? List<*>)
+            ?.filterIsInstance<String>()
+            ?: error("set-manifest 'manifest' missing 'sets' array")
         val detailsMap = mapper.readValue<Map<String, Map<String, Any?>>>(setDetailsEntry.payloadBase64)
 
         return codes.map { code ->
