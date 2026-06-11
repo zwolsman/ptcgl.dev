@@ -61,9 +61,10 @@ class VerifyCardDbRunner(
         val tableKey = cardDbDoc["table"]
             ?: error("Key 'table' not found. Keys present: ${cardDbDoc.data.keys}")
 
-        // Save raw base64 payload as a fixture for offline testing
-        val fixturePath = Path.of("src/test/resources/fixtures/card-db-sv1-en.b64")
-        Files.createDirectories(fixturePath.parent)
+        // Save raw base64 payload as a fixture for offline testing (rainier module test resources)
+        val fixtureDir = Path.of("rainier/src/test/resources/fixtures")
+        Files.createDirectories(fixtureDir)
+        val fixturePath = fixtureDir.resolve("card-db-sv1-en.b64")
         Files.writeString(fixturePath, tableKey.payloadBase64)
         log.info("Raw base64 payload saved to {}", fixturePath)
 
@@ -73,7 +74,7 @@ class VerifyCardDbRunner(
         log.info("Engine byte: 0x{} ({})", engineByte.toString(16), if (engineByte == 0) "raw" else "QuickLZ")
         val dataBytes = if (engineByte == 0x00) rawBytes.copyOfRange(1, rawBytes.size)
                         else com.zwolsman.ptcgl.mirror.rainier.codec.QuickLz.decompress(rawBytes.copyOfRange(1, rawBytes.size))
-        Files.write(Path.of("src/test/resources/fixtures/card-db-sv1-en.bin"), dataBytes)
+        Files.write(fixtureDir.resolve("card-db-sv1-en.bin"), dataBytes)
         log.info("Binary payload: {} bytes", dataBytes.size)
 
         // --- Decode and inspect ---
