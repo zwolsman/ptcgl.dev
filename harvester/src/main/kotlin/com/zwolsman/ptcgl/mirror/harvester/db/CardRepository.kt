@@ -53,6 +53,12 @@ class CardRepository(private val jdbc: JdbcTemplate) {
         }
     }
 
+    /** Returns unique (set_id, number) pairs for all cards currently in the database. */
+    fun findDistinctCardKeys(): List<Pair<String, String>> =
+        jdbc.query("SELECT DISTINCT set_id, number FROM card ORDER BY set_id, number") { rs, _ ->
+            rs.getString("set_id") to rs.getString("number")
+        }
+
     @Transactional
     fun upsertLocalizations(rows: List<CardLocalizationRecord>) {
         if (rows.isEmpty()) return

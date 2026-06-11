@@ -39,6 +39,10 @@ class SetRepository(private val jdbc: JdbcTemplate) {
         })
     }
 
+    /** Returns all set IDs currently in the database. */
+    fun findAllSetIds(): List<String> =
+        jdbc.query("SELECT id FROM set ORDER BY id") { rs, _ -> rs.getString("id") }
+
     @Transactional
     fun upsertLocalizations(rows: List<SetLocalizationRecord>) {
         if (rows.isEmpty()) return

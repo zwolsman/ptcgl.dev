@@ -116,7 +116,14 @@ class PlanService(
             }
         }
 
-        // --- 4. Asset-bundle manifest → bucket list (rebuild ledger only when manifest changed) ---
+        // --- 4. Derive expected asset names from cards and sets in the DB ---
+        val cardKeys = cardRepo.findDistinctCardKeys()    // (set_id, number)
+        val setIds   = setRepo.findAllSetIds()
+        val expectedAssets = deriveExpectedAssetNames(cardKeys, setIds, locale)
+        log.info("Expecting {} asset names from {} card keys and {} sets",
+            expectedAssets.size, cardKeys.size, setIds.size)
+
+        // --- 5. Asset-bundle manifest → bucket list (rebuild ledger only when manifest changed) ---
         if (!revisionRepo.isUpToDate(bundleManifestId, bundleManifestDoc.revision)) {
             val manifestEntry = bundleManifestDoc["manifest"]
                 ?: error("asset-bundle-manifest missing 'manifest' key")
@@ -127,15 +134,15 @@ class PlanService(
 
             log.info("Found {} CDN buckets", buckets.size)
 
-            // --- 5. Download per-bucket manifest bundles → parse → accumulate ledger entries ---
+            // --- 6. Download per-bucket manifest bundles → parse → filter → accumulate ledger entries ---
             val desired = mutableListOf<AssetLedgerEntry>()
 
             for (bucket in buckets) {
-                val entries = processBucketManifest(bucket, locale)
+                val entries = processBucketManifest(bucket, locale, expectedAssets)
                 desired += entries
             }
 
-            log.info("Upserting {} asset_object ledger entries", desired.size)
+            log.info("Upserting {} asset_object ledger entries (filtered from full manifest)", desired.size)
             assetRepo.upsertDesiredAssets(desired)
 
             val activeAssets = desired.map { it.assetName to it.locale }.toSet()
@@ -178,7 +185,34 @@ class PlanService(
         log.info("Upserted {} cards from {}", result.cards.size, setCode)
     }
 
-    private fun processBucketManifest(bucket: String, locale: String): List<AssetLedgerEntry> {
+    /**
+     * Derives the complete set of asset names we care about from the cards and sets already in the DB.
+     *
+     * Card assets: {set_id}_{locale}_{number}        (HIRES)
+     *              {set_id}_{locale}_{number}_t       (THUMB)
+     * Set assets:  expansion_{set_id}_{locale}        (set logo/expansion image)
+     */
+    private fun deriveExpectedAssetNames(
+        cardKeys: List<Pair<String, String>>,
+        setIds: List<String>,
+        locale: String,
+    ): Set<String> {
+        val names = mutableSetOf<String>()
+        for ((setId, number) in cardKeys) {
+            names += "${setId}_${locale}_${number}"
+            names += "${setId}_${locale}_${number}_t"
+        }
+        for (setId in setIds) {
+            names += "expansion_${setId}_${locale}"
+        }
+        return names
+    }
+
+    private fun processBucketManifest(
+        bucket: String,
+        locale: String,
+        expectedAssets: Set<String>,
+    ): List<AssetLedgerEntry> {
         val bundleBytes = try {
             cdnClient.downloadManifestBundle(bucket, locale)
         } catch (e: AssetNotFoundException) {
@@ -192,15 +226,17 @@ class PlanService(
                 ?: return emptyList()
             val manifestEntries = AssetManifestExtractor.extract(sf)
 
-            manifestEntries.map { entry ->
-                AssetLedgerEntry(
-                    assetName  = entry.assetName,
-                    locale     = locale,
-                    bucket     = bucket,
-                    crc        = entry.crc,
-                    sourceHash = entry.hash,
-                )
-            }
+            manifestEntries
+                .filter { it.assetName in expectedAssets }
+                .map { entry ->
+                    AssetLedgerEntry(
+                        assetName  = entry.assetName,
+                        locale     = locale,
+                        bucket     = bucket,
+                        crc        = entry.crc,
+                        sourceHash = entry.hash,
+                    )
+                }
         } catch (e: Exception) {
             log.warn("Failed to parse manifest bundle for bucket={}: {}", bucket, e.message)
             emptyList()
