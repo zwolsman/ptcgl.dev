@@ -7,6 +7,7 @@ import com.zwolsman.ptcgl.mirror.harvester.db.CardRepository
 import com.zwolsman.ptcgl.mirror.harvester.db.ConfigRevisionRepository
 import com.zwolsman.ptcgl.mirror.harvester.db.SetRepository
 import com.zwolsman.ptcgl.mirror.harvester.domain.SetRecord
+import com.zwolsman.ptcgl.mirror.harvester.download.AssetDecodeService
 import com.zwolsman.ptcgl.mirror.harvester.download.AssetDownloadService
 import com.zwolsman.ptcgl.mirror.harvester.normalize.CardDbNormalizer
 import com.zwolsman.ptcgl.mirror.harvester.normalize.SetManifestParser
@@ -33,6 +34,7 @@ class PlanService(
     private val assetRepo: AssetLedgerRepository,
     private val revisionRepo: ConfigRevisionRepository,
     private val assetDownloadService: AssetDownloadService,
+    private val assetDecodeService: AssetDecodeService,
 ) {
 
     /**
@@ -158,6 +160,11 @@ class PlanService(
         log.info("Phase B: downloading assets from CDN to S3…")
         val downloaded = assetDownloadService.downloadAll()
         log.info("Phase B complete. {} assets uploaded to S3.", downloaded)
+
+        // --- 7. Decode raw bundles → extract internal files (always runs) ---
+        log.info("Phase C: unpacking bundles from S3…")
+        val decoded = assetDecodeService.decodeAll()
+        log.info("Phase C complete. {} bundles unpacked.", decoded)
     }
 
     private fun processCardDatabase(docId: String, setCode: String, locale: String) {
