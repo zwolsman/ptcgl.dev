@@ -1,5 +1,6 @@
 package com.zwolsman.ptcgl.mirror.harvester.db
 
+import org.springframework.jdbc.core.ConnectionCallback
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.core.BatchPreparedStatementSetter
 import org.springframework.stereotype.Repository
@@ -65,14 +66,25 @@ class AssetLedgerRepository(private val jdbc: JdbcTemplate) {
     @Transactional
     fun markStale(activeAssets: Set<Pair<String, String>>) {
         if (activeAssets.isEmpty()) return
-        val placeholders = activeAssets.joinToString(",") { "(?, ?)" }
-        val params: Array<Any?> = activeAssets.flatMap { (name, locale) -> listOf(name, locale) }.toTypedArray()
-        jdbc.update("""
-            UPDATE asset_object
-               SET status     = 'STALE',
-                   updated_at = now()
-             WHERE status NOT IN ('STALE', 'DONE')
-               AND (asset_name, locale) NOT IN ($placeholders)
-        """.trimIndent(), *params)
+        // Use unnest() to avoid the 65535 bind-parameter limit that NOT IN (?,?) ... hits.
+        val names   = activeAssets.map { it.first }.toTypedArray()
+        val locales = activeAssets.map { it.second }.toTypedArray()
+        jdbc.execute(ConnectionCallback<Unit> { conn ->
+            val nameArr   = conn.createArrayOf("text", names)
+            val localeArr = conn.createArrayOf("text", locales)
+            conn.prepareStatement("""
+                UPDATE asset_object
+                   SET status     = 'STALE',
+                       updated_at = now()
+                 WHERE status NOT IN ('STALE', 'DONE')
+                   AND (asset_name, locale) NOT IN (
+                       SELECT * FROM unnest(?::text[], ?::text[])
+                   )
+            """.trimIndent()).use { ps ->
+                ps.setArray(1, nameArr)
+                ps.setArray(2, localeArr)
+                ps.executeUpdate()
+            }
+        })
     }
 }
