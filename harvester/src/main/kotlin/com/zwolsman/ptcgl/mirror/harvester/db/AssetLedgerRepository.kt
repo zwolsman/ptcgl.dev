@@ -8,6 +8,12 @@ import org.springframework.transaction.annotation.Transactional
 import java.sql.PreparedStatement
 import java.sql.Types
 
+data class ClaimedAsset(
+    val assetName: String,
+    val locale: String,
+    val bucket: String,
+)
+
 data class AssetLedgerEntry(
     val assetName: String,
     val locale: String,
@@ -61,6 +67,59 @@ class AssetLedgerRepository(private val jdbc: JdbcTemplate) {
              WHERE status = 'IN_PROGRESS'
                AND lease_until < now()
         """.trimIndent())
+    }
+
+    @Transactional
+    fun claimPending(limit: Int, leaseSeconds: Long = 300): List<ClaimedAsset> {
+        // CTE atomically selects PENDING rows (SKIP LOCKED) and flips them to IN_PROGRESS.
+        return jdbc.query("""
+            WITH claimed AS (
+                SELECT asset_name, locale
+                  FROM asset_object
+                 WHERE status = 'PENDING'
+                 ORDER BY updated_at
+                 LIMIT ?
+                 FOR UPDATE SKIP LOCKED
+            )
+            UPDATE asset_object a
+               SET status      = 'IN_PROGRESS',
+                   lease_until = now() + (? || ' seconds')::interval,
+                   attempts    = attempts + 1,
+                   updated_at  = now()
+              FROM claimed
+             WHERE a.asset_name = claimed.asset_name
+               AND a.locale     = claimed.locale
+         RETURNING a.asset_name, a.locale, a.bucket
+        """.trimIndent(), { rs, _ ->
+            ClaimedAsset(
+                assetName = rs.getString("asset_name"),
+                locale    = rs.getString("locale"),
+                bucket    = rs.getString("bucket"),
+            )
+        }, limit, leaseSeconds.toString())
+    }
+
+    fun markDone(assetName: String, locale: String, s3KeyRaw: String) {
+        jdbc.update("""
+            UPDATE asset_object
+               SET status      = 'DONE',
+                   s3_key_raw  = ?,
+                   lease_until = null,
+                   last_error  = null,
+                   updated_at  = now()
+             WHERE asset_name = ? AND locale = ?
+        """.trimIndent(), s3KeyRaw, assetName, locale)
+    }
+
+    fun markFailed(assetName: String, locale: String, error: String) {
+        jdbc.update("""
+            UPDATE asset_object
+               SET status      = CASE WHEN attempts >= 3 THEN 'SKIPPED'::asset_status ELSE 'PENDING'::asset_status END,
+                   lease_until = null,
+                   last_error  = ?,
+                   updated_at  = now()
+             WHERE asset_name = ? AND locale = ?
+        """.trimIndent(), error.take(2048), assetName, locale)
     }
 
     @Transactional
