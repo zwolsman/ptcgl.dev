@@ -24,7 +24,7 @@ in cleanly.
 - Run unattended as a Kubernetes `CronJob`.
 
 ### Non-goals
-- Serving the data (a separate API project consumes Postgres + S3).
+- Serving the data (a separate API project consumes Postgres + S3). That API will browse cards/sets as JSON and resolve asset URLs; the data model is designed so card data + all asset links (including inline material manifest JSON) are available from Postgres alone without S3 fetches.
 - Mirroring irrelevant assets (gameplay VFX, shaders, board art, fonts, audio, etc.).
 - Real-time updates. Content drops are ~weekly; a scheduled mirror is sufficient.
 - Re-implementing the game's websocket/FlatBuffers realtime protocol beyond what is needed to read config documents.
@@ -48,7 +48,7 @@ are the foundation of the design; if they drift, the affected module is the blas
 - Engine: Unity `6000.3.5f2`. Manifest type: `TPCI.AssetBundleSystem.AssetManifest/ManifestEntry`.
 
 **Control plane (REST) — requires a logged-in account.**
-- Base: `https://api.studio-prod.pokemon.com`. Responses are **FlatBuffers** binary.
+- Base: `https://api.studio-prod.pokemon.com`. Responses are **application/json**.
 - Bootstrap chain (all verified returning 200):
   1. `POST /user/v1/external/routing/route` `{clientTypeAccessKey}` → regional `apiEndpoint` (e.g. `https://api.us-east-1.studio-prod.pokemon.com`).
   2. `POST {api}/account/v1/external/token/register` `{clientTypeAccessKey, clientId}` → **guest** JWT (`iss:guest`).
@@ -101,7 +101,7 @@ ptcgl-mirror/                       (Gradle multi-module; Kotlin + Spring Boot)
 
 **Phase B — Reconcile (throttled, resumable, may span runs).**
 - Select `status IN (PENDING, FAILED_RETRYABLE)` ordered by priority (newest sets first), under the rate limiter + a per-run budget.
-- Per item, idempotently: `IN_PROGRESS` → download bundle → store **raw** to S3 → decode (`unity/`) → store **decoded** (PNG/JSON) to S3 → upsert `card_asset` links → `DONE` (persist `source_hash`, `s3_key`, `etag`).
+- Per item, idempotently: `IN_PROGRESS` → download bundle → store **raw** to S3 → decode (`unity/`) → store **decoded** (PNG/JSON) to S3 → upsert `card_asset` / `set_asset` links → `DONE` (persist `crc`, `source_hash`, `s3_key`, `etag`).
 - Transient error → `FAILED_RETRYABLE` (attempt count + backoff). 403/pruned → `SKIPPED`.
 - **On 429 or budget exhaustion: stop cleanly, exit 0**, leaving remaining work `PENDING`. Next CronJob tick resumes from the ledger.
 
@@ -120,7 +120,7 @@ STALE (no longer desired)
 
 - **Kotlin + Spring Boot** (DI, configuration, actuator/health, Micrometer).
 - **Coroutines** for bounded-concurrency download/decode.
-- **Postgres** (dedicated instance) via **Flyway** (migrations) + **jOOQ** or Spring Data JDBC (typed, blocking — appropriate for a batch job).
+- **Postgres** (dedicated instance) via **Flyway** (migrations) + Spring Data JDBC (typed, blocking — appropriate for a batch job).
 - **AWS SDK v2 S3** against the self-hosted S3-compatible endpoint: `endpointOverride`, `forcePathStyle(true)`, dummy region. (MinIO Java client is a drop-in alternative behind the `S3Store` interface.)
 - **WebClient / OkHttp** for HTTP.
 - CLI subcommands via Spring Boot `ApplicationRunner` (`plan`, `reconcile`, `run`, `login`).
@@ -158,6 +158,7 @@ Expose `revision` per document to drive incremental Phase A.
 
 ## 8. Locale handling
 
+- **Initial run: `en` only.** Multi-locale expansion is deferred to M5 (milestone 5). The schema and pipeline are locale-aware from day one, but only `en` is processed initially.
 - Configured target locales (e.g. `en, fr, de, it, es, pt-br`) + a **fallback locale** (`en`).
 - Phase A iterates `(locale × bucket)` for manifests. Asset names are locale-tagged; the desired-name derivation substitutes the locale tag per target locale.
 - **Fallback:** if an asset is absent for a locale, record a fallback link to the fallback locale's asset rather than duplicating bytes (the client itself falls back).
@@ -170,19 +171,28 @@ Expose `revision` per document to drive incremental Phase A.
 ```sql
 -- Domain (published; consumed by the separate API)
 set(id pk, code, name, series, release_date, revision)
-set_localization(set_id fk, locale, name, symbol_s3_key, logo_s3_key, primary key(set_id, locale))
+set_localization(set_id fk, locale, name, primary key(set_id, locale))
 card(id pk, set_id fk, number, rarity, regulation_mark, archetype, hp,
      types, evolves_from, group_id, ...)          -- locale-invariant facts
 card_localization(card_id fk, locale, name, ...,  primary key(card_id, locale))
 card_variant(id pk, card_id fk, variant, ...)
-card_asset(card_id fk, locale, kind ENUM(HIRES,THUMB,MANIFEST,RAW),
-           s3_key, source_hash, width, height,    primary key(card_id, locale, kind))
+set_asset(set_id fk, locale, kind ENUM(SYMBOL,LOGO),
+          s3_key, source_hash, crc,              primary key(set_id, locale, kind))
+card_asset(card_id fk, locale,
+           kind    ENUM(HIRES, THUMB, WHITEPLATE, ETCH, MATERIAL_MANIFEST, RAW),
+           variant text,        -- rarity suffix for MATERIAL_MANIFEST (e.g. 'mph', 'sph'); null for all other kinds
+           s3_key  text,        -- Unity-original path under decoded/ prefix; referenced verbatim by material manifests
+           manifest_json jsonb, -- populated for MATERIAL_MANIFEST kind; stored inline so API needs no S3 fetch
+           source_hash, crc, width, height,
+           primary key(card_id, locale, kind, variant))
+           -- crc from manifest entry; checked first for cheaply detecting new data
 
 -- State / ledger (drives resumability)
-asset_object(asset_name, locale, bucket, source_hash, s3_key_raw, s3_key_decoded,
+asset_object(asset_name, locale, bucket, crc, source_hash, s3_key_raw, s3_key_decoded,
              status ENUM(PENDING,IN_PROGRESS,DONE,FAILED_RETRYABLE,SKIPPED,STALE),
              attempts, last_error, lease_until, updated_at,
              primary key(asset_name, locale))
+             -- crc from manifest entry (cheap change-detection probe); source_hash is the full content hash
 config_revision(doc_id pk, revision, fetched_at)
 auth_state(id pk=1, refresh_token, refresh_token_updated_at, last_studio_iss, note)
 ingest_run(id pk, started_at, finished_at, planned, done, skipped, rate_limited, summary)
@@ -206,9 +216,8 @@ service as base64 payloads that decode to QuickLZ-compressed, little-endian .NET
   - key `card-databases-manifest` → JSON array of **templates**, one per set: `["sv1_1_{0}", "bw1_1_{0}", ...]`. `{0}` is the cards language tag; the middle number is a per-set DB version.
 
 ### Per-set card DB document
-- Doc id = `String.format(template, cardsLangTag.lowercase()) + "_0.0"` → e.g. `sv1_1_en_0.0`.
+- Doc id = `String.format(template, cardsLangTag.lowercase()) + "_0.0"` → e.g. `sv1_1_en_0.0`. The document has a prefix "card-database-" and suffix "_0.0" need to be added. Example: "card-database-sv1_1_en_0.0"
   - `cardsLangTag = localizationSettings.GetSubstitutionLanguageTag("cards").lowercase()`.
-  - **OPEN:** literal `en` returned an empty document in testing — confirm the exact tag at implementation (read the localization-settings config doc, or try the small candidate set with a fresh token).
 - Fetched via the same `getMultiple` (JSON) path; payload under key **`table`**, `contentType: json`, `contentString` = base64.
 
 ### Payload codec (`table` contentString)
@@ -231,13 +240,14 @@ service as base64 payloads that decode to QuickLZ-compressed, little-endian .NET
 ## 10. Storage layout (S3-compatible, raw + decoded)
 
 ```
-raw/{locale}/{bucket}/{assetName}                 # exact bytes as fetched (UnityFS)
-cards/{locale}/{setId}/{number}/hires.png
-cards/{locale}/{setId}/{number}/thumb.png
-cards/{locale}/{setId}/{number}/manifest.json     # decoded MonoBehaviour fields
-sets/{locale}/{setId}/symbol.png
-sets/{locale}/{setId}/logo.png
+raw/{locale}/{bucket}/{assetName}     # exact bytes as fetched (UnityFS)
+decoded/{asset-bundle-internal-path}  # decoded output; path taken verbatim from the Unity bundle
 ```
+
+The `decoded/` prefix is the only path we construct. The remainder is the asset's internal path as embedded in the Unity asset bundle — no reconstruction or guessing. Material manifest JSON files reference other assets by these same internal paths, so the references resolve correctly without any translation layer.
+
+The `s3_key` stored in `card_asset` and `set_asset` is the full `decoded/…` key. Material manifest JSON is additionally stored inline in `card_asset.manifest_json` so the API never needs an S3 round-trip to resolve image URLs.
+
 Dedupe by `source_hash`; objects carry correct content-types. Raw is retained for
 reproducibility and to allow re-decoding without re-downloading.
 
