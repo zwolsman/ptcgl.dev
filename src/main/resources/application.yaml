@@ -1,6 +1,10 @@
 spring:
   application:
     name: mirror
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+      - org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration
 
 rainier:
   base-url: https://api.studio-prod.pokemon.com

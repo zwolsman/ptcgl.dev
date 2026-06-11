@@ -1,0 +1,45 @@
+services:
+
+  postgres:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ptcgl_mirror
+      POSTGRES_USER: ptcgl
+      POSTGRES_PASSWORD: ptcgl
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ptcgl -d ptcgl_mirror"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Init container: fix ownership so rustfs (UID 10001) can write to the volume
+  rustfs_perms:
+    image: alpine
+    user: root
+    volumes:
+      - rustfs_data:/fix_path
+    command: chown -R 10001:10001 /fix_path
+
+  rustfs:
+    image: rustfs/rustfs:latest
+    depends_on:
+      rustfs_perms:
+        condition: service_completed_successfully
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # web console
+    environment:
+      RUSTFS_VOLUMES: /data/rustfs
+      RUSTFS_ROOT_USER: rustfsadmin
+      RUSTFS_ROOT_PASSWORD: rustfsadmin
+      RUSTFS_CONSOLE_ENABLE: "true"
+    volumes:
+      - rustfs_data:/data/rustfs
+
+volumes:
+  postgres_data:
+  rustfs_data:
