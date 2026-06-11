@@ -11,7 +11,7 @@ build/
 *.env
 .env
 test-out/
-*.bin
+# NOTE: do not ignore *.bin — Unity/card test fixtures are committed
 
 # OS
 .DS_Store

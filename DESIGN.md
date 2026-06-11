@@ -192,6 +192,42 @@ ingest_run(id pk, started_at, finished_at, planned, done, skipped, rate_limited,
 
 ---
 
+## 9a. Card & set database codec (verified against decompile + live API)
+
+The card/set data is **not** Unity bundles — it comes from the authenticated config
+service as base64 payloads that decode to QuickLZ-compressed, little-endian .NET
+`DataTable` binaries. Fully reverse-engineered; needs a dedicated Kotlin codec.
+
+### Discovery
+- `set-manifest_0.0`:
+  - key `manifest` → JSON array of set codes (`["ec","sv1","swsh12", ...]`).
+  - key `setDetails` → per-set object `{MainSetCount, MasterSetCount, SeriesId, SortOrder, SeriesSortOrder, SetSortOrder, SetCategory, OAReleaseDate}`. `OAReleaseDate` is an **OLE Automation / Excel serial date** (days since 1899-12-30) → convert.
+- `card-databases-manifest_0.0`:
+  - key `card-databases-manifest` → JSON array of **templates**, one per set: `["sv1_1_{0}", "bw1_1_{0}", ...]`. `{0}` is the cards language tag; the middle number is a per-set DB version.
+
+### Per-set card DB document
+- Doc id = `String.format(template, cardsLangTag.lowercase()) + "_0.0"` → e.g. `sv1_1_en_0.0`.
+  - `cardsLangTag = localizationSettings.GetSubstitutionLanguageTag("cards").lowercase()`.
+  - **OPEN:** literal `en` returned an empty document in testing — confirm the exact tag at implementation (read the localization-settings config doc, or try the small candidate set with a fresh token).
+- Fetched via the same `getMultiple` (JSON) path; payload under key **`table`**, `contentType: json`, `contentString` = base64.
+
+### Payload codec (`table` contentString)
+1. **base64**-decode.
+2. **QuickLZ.decompress** — QuickLZ level-1 stream (`CardDatabase.DataAccess/QuickLZ.cs`; port to Kotlin, existing Java ports exist). `BufferedRealtimeCompressionEngine` = thin wrapper over QuickLZ.
+3. Parse as a custom **`System.Data.DataTable`** via **little-endian .NET `BinaryReader`** semantics:
+   - `.NET ReadString` = **7-bit-encoded-int (LEB128)** byte-length prefix + UTF-8 bytes.
+   - Header: `TableName` (ReadString), `colCount` (Int32 LE), then per column `name` (ReadString) + `typeName` (ReadString); `rowCount` (Int32 LE).
+   - Each cell starts with a **marker byte**: `0` = value follows, `1` = `DBNull`, `2` = `null`.
+   - Typed values: Boolean(1), Byte/`CardCategory`(1), SByte(1), Int16/UInt16(2 LE), Int32/UInt32(4 LE), Int64/UInt64(8 LE), Single(4 IEEE), Double(8 IEEE), Char(.NET ReadChar), String(7-bit-len+UTF-8), `Byte[]`(Int32 len + bytes), DateTime(Int64 **ticks** → 100ns since 0001-01-01), Decimal(.NET 16-byte: lo/mid/hi/flags Int32s), Guid(16-byte .NET layout), TimeSpan(Int64 ticks).
+4. Map columns to domain (same column set as the prior exploration's `Row.Columns`: `cardID`, `EN Card Name`, `EN Card #`, rarity codes, `HP`, evolves, `archetypeID`, `Group ID`, `category`, `variant`, …) → `card` / `card_localization`.
+
+### Implementation tasks
+- `QuickLz.decompress(ByteArray): ByteArray` (level-1).
+- `DotNetBinaryReader` (little-endian; 7-bit-int strings, decimal, guid, datetime-ticks). **Distinct from the big-endian `UnityFS` reader** — do not share endianness.
+- `DataTableCodec.decode(base64): Table` composing the above; `CardDbCodec` / `SetCodec` mapping to domain rows.
+
+---
+
 ## 10. Storage layout (S3-compatible, raw + decoded)
 
 ```
