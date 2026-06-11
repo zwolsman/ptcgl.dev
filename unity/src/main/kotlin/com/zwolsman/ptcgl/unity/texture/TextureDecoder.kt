@@ -27,6 +27,8 @@ object TextureDecoder {
             FORMAT_DXT5   -> decodeDxt5(data, width, height)
             else          -> return null
         }
+        // Unity stores textures bottom-to-top; flip rows before encoding.
+        flipVertical(pixels, width, height)
         return encodePng(pixels, width, height)
     }
 
@@ -173,6 +175,19 @@ object TextureDecoder {
         ((b[o + 3].toLong() and 0xFF) shl 24) or
         ((b[o + 4].toLong() and 0xFF) shl 32) or
         ((b[o + 5].toLong() and 0xFF) shl 40)
+
+    // --- Image transforms ---
+
+    private fun flipVertical(pixels: IntArray, width: Int, height: Int) {
+        val row = IntArray(width)
+        for (y in 0 until height / 2) {
+            val top = y * width
+            val bot = (height - 1 - y) * width
+            System.arraycopy(pixels, top, row, 0, width)
+            System.arraycopy(pixels, bot, pixels, top, width)
+            System.arraycopy(row, 0, pixels, bot, width)
+        }
+    }
 
     // --- PNG encoder ---
 
