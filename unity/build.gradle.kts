@@ -17,6 +17,7 @@ repositories {
 
 dependencies {
 	implementation("org.lz4:lz4-java:1.8.0")
+	implementation("org.tukaani:xz:1.10")
 	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
@@ -29,4 +30,5 @@ kotlin {
 
 tasks.withType<Test> {
 	useJUnitPlatform()
+	maxHeapSize = "512m"
 }
