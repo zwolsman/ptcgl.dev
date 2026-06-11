@@ -4,6 +4,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 private const val META_FLAG_ALIGN = 0x4000
+private val VECTOR_TYPES = setOf("vector", "staticvector", "set", "map")
 
 /**
  * Reads a single Unity object by walking its TypeTree depth-first.
@@ -40,6 +41,13 @@ object TypeTreeReader {
             return readArray(buf, nodes, startIdx)
         }
 
+        // Unity "string" has a child "Array" in the TypeTree but is read as a contiguous string.
+        if (node.typeName == "string") {
+            return readString(buf).also {
+                if (node.metaFlags and META_FLAG_ALIGN != 0) alignBuffer(buf)
+            }
+        }
+
         // Determine if this is a leaf (no children at depth+1 following it)
         val nextIdx = startIdx + 1
         val hasChildren = nextIdx < nodes.size && nodes[nextIdx].depth > depth
@@ -47,6 +55,23 @@ object TypeTreeReader {
         if (!hasChildren) {
             return readPrimitive(buf, node).also {
                 if (node.metaFlags and META_FLAG_ALIGN != 0) alignBuffer(buf)
+            }
+        }
+
+        // Unity vector wrapper: the ONLY direct child is an isArray "Array" node.
+        // Applies to "vector"/"staticvector" built-in types and typed array fields
+        // (e.g. typeName="ManifestEntry" with one Array child).
+        val firstChild = nodes[nextIdx]
+        if (firstChild.isArray && firstChild.fieldName == "Array") {
+            // Verify no other sibling exists at this depth (scan past Array's subtree)
+            val hasSecondDirectChild = ((nextIdx + 1) until nodes.size)
+                .asSequence()
+                .takeWhile { nodes[it].depth > depth }
+                .any { nodes[it].depth == depth + 1 }
+            if (!hasSecondDirectChild) {
+                return readArray(buf, nodes, nextIdx).also {
+                    if (node.metaFlags and META_FLAG_ALIGN != 0) alignBuffer(buf)
+                }
             }
         }
 
