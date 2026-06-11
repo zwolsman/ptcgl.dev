@@ -14,6 +14,13 @@ data class ClaimedAsset(
     val bucket: String,
 )
 
+data class DoneAsset(
+    val assetName: String,
+    val locale: String,
+    val bucket: String,
+    val s3KeyRaw: String,
+)
+
 data class AssetLedgerEntry(
     val assetName: String,
     val locale: String,
@@ -109,6 +116,31 @@ class AssetLedgerRepository(private val jdbc: JdbcTemplate) {
                    updated_at  = now()
              WHERE asset_name = ? AND locale = ?
         """.trimIndent(), s3KeyRaw, assetName, locale)
+    }
+
+    fun findDoneWithoutDecoded(limit: Int): List<DoneAsset> =
+        jdbc.query("""
+            SELECT asset_name, locale, bucket, s3_key_raw
+              FROM asset_object
+             WHERE status = 'DONE'
+               AND s3_key_decoded IS NULL
+               AND s3_key_raw IS NOT NULL
+             LIMIT ?
+        """.trimIndent(), { rs, _ ->
+            DoneAsset(
+                assetName = rs.getString("asset_name"),
+                locale    = rs.getString("locale"),
+                bucket    = rs.getString("bucket"),
+                s3KeyRaw  = rs.getString("s3_key_raw"),
+            )
+        }, limit)
+
+    fun markDecoded(assetName: String, locale: String, s3KeyDecoded: String) {
+        jdbc.update("""
+            UPDATE asset_object
+               SET s3_key_decoded = ?, updated_at = now()
+             WHERE asset_name = ? AND locale = ?
+        """.trimIndent(), s3KeyDecoded, assetName, locale)
     }
 
     fun markFailed(assetName: String, locale: String, error: String) {
