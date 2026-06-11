@@ -1,5 +1,6 @@
 package com.zwolsman.ptcgl.mirror.harvester.download
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.zwolsman.ptcgl.mirror.harvester.db.AssetLedgerRepository
 import com.zwolsman.ptcgl.unity.bundle.BundleFile
 import com.zwolsman.ptcgl.unity.bundle.UnityBundle
@@ -13,8 +14,10 @@ import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 
 private val log = LoggerFactory.getLogger(AssetDecodeService::class.java)
+private val mapper = jacksonObjectMapper()
 
-private const val CLASS_TEXTURE2D = 28
+private const val CLASS_TEXTURE2D    = 28
+private const val CLASS_MONO_BEHAVIOUR = 114
 
 @Service
 class AssetDecodeService(
@@ -96,33 +99,50 @@ class AssetDecodeService(
 
             for (obj in sf.objects) {
                 val type = sf.types.getOrNull(obj.typeIndex) ?: continue
-                if (type.classId != CLASS_TEXTURE2D) continue
-                if (type.nodes.isEmpty()) {
-                    log.debug("Texture2D in {} has no TypeTree nodes, skipping", cab.path)
-                    continue
-                }
+                if (type.nodes.isEmpty()) continue
 
                 try {
-                    val objData = TypeTreeReader.read(sf, obj)
-                    val name = objData["m_Name"] as? String ?: continue
+                    when (type.classId) {
+                        CLASS_TEXTURE2D -> {
+                            val objData = TypeTreeReader.read(sf, obj)
+                            val name = objData["m_Name"] as? String ?: continue
 
-                    val imageBytes = readTextureData(objData, resSByName) ?: run {
-                        log.debug("No image data for texture '{}' in {}", name, cab.path)
-                        continue
+                            val imageBytes = readTextureData(objData, resSByName) ?: run {
+                                log.debug("No image data for texture '{}' in {}", name, cab.path)
+                                continue
+                            }
+
+                            val key = "$decodedPrefix/$name.png"
+                            s3.putObject(
+                                PutObjectRequest.builder()
+                                    .bucket(bucket)
+                                    .key(key)
+                                    .contentLength(imageBytes.size.toLong())
+                                    .build(),
+                                RequestBody.fromBytes(imageBytes),
+                            )
+                            count++
+                        }
+
+                        CLASS_MONO_BEHAVIOUR -> {
+                            val objData = TypeTreeReader.read(sf, obj)
+                            val name = (objData["m_Name"] as? String)?.takeIf { it.isNotBlank() } ?: continue
+
+                            val json = mapper.writeValueAsBytes(objData)
+                            val key = "$decodedPrefix/$name.json"
+                            s3.putObject(
+                                PutObjectRequest.builder()
+                                    .bucket(bucket)
+                                    .key(key)
+                                    .contentLength(json.size.toLong())
+                                    .build(),
+                                RequestBody.fromBytes(json),
+                            )
+                            count++
+                        }
                     }
-
-                    val key = "$decodedPrefix/$name"
-                    s3.putObject(
-                        PutObjectRequest.builder()
-                            .bucket(bucket)
-                            .key(key)
-                            .contentLength(imageBytes.size.toLong())
-                            .build(),
-                        RequestBody.fromBytes(imageBytes),
-                    )
-                    count++
                 } catch (e: Exception) {
-                    log.debug("Failed to extract Texture2D from {}: {}", cab.path, e.message)
+                    log.debug("Failed to extract object (classId={}) from {}: {}", type.classId, cab.path, e.message)
                 }
             }
         }
