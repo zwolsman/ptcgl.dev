@@ -6,6 +6,15 @@ spring:
       - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
       - org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration
 
+mirror:
+  s3:
+    endpoint: ${MIRROR_S3_ENDPOINT:https://s3.amazonaws.com}
+    access-key: ${MIRROR_S3_ACCESS_KEY:}
+    secret-key: ${MIRROR_S3_SECRET_KEY:}
+    bucket: ptcgl-mirror
+    region: us-east-1
+    force-path-style: false
+
 rainier:
   base-url: https://api.studio-prod.pokemon.com
   client-type-access-key: "421d8904-0236-4ab4-94f5-a8a84aeb3f7b"
