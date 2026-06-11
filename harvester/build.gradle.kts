@@ -29,6 +29,9 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-jdbc")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+	implementation(platform("software.amazon.awssdk:bom:2.31.28"))
+	implementation("software.amazon.awssdk:s3")
+	implementation("software.amazon.awssdk:url-connection-client")
 	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
