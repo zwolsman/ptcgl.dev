@@ -1,4 +1,4 @@
-package com.zwolsman.ptcgl.mirror
+package com.zwolsman.ptcgl.mirror.harvester.config
 
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
@@ -6,23 +6,23 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
+import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.S3Configuration
 import software.amazon.awssdk.services.s3.model.S3Exception
-import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient
 import java.net.URI
 
 private val log = LoggerFactory.getLogger(S3Config::class.java)
 
 @Configuration
 class S3Config(
-    @Value("\${mirror.s3.endpoint}")                  private val endpoint: String,
-    @Value("\${mirror.s3.access-key}")                private val accessKey: String,
-    @Value("\${mirror.s3.secret-key}")                private val secretKey: String,
-    @Value("\${mirror.s3.region}")                    private val region: String,
-    @Value("\${mirror.s3.force-path-style:false}")    private val forcePathStyle: Boolean,
-    @Value("\${mirror.s3.bucket}")                    private val bucket: String,
+    @Value("\${mirror.s3.endpoint}")               private val endpoint: String,
+    @Value("\${mirror.s3.access-key}")             private val accessKey: String,
+    @Value("\${mirror.s3.secret-key}")             private val secretKey: String,
+    @Value("\${mirror.s3.region}")                 private val region: String,
+    @Value("\${mirror.s3.force-path-style:false}") private val forcePathStyle: Boolean,
+    @Value("\${mirror.s3.bucket}")                 private val bucket: String,
 ) {
 
     @Bean
