@@ -6,6 +6,7 @@ import com.zwolsman.ptcgl.unity.bundle.BundleFile
 import com.zwolsman.ptcgl.unity.bundle.UnityBundle
 import com.zwolsman.ptcgl.unity.serialized.SerializedFileParser
 import com.zwolsman.ptcgl.unity.serialized.TypeTreeReader
+import com.zwolsman.ptcgl.unity.texture.TextureDecoder
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -105,10 +106,18 @@ class AssetDecodeService(
                     when (type.classId) {
                         CLASS_TEXTURE2D -> {
                             val objData = TypeTreeReader.read(sf, obj)
-                            val name = objData["m_Name"] as? String ?: continue
+                            val name   = objData["m_Name"] as? String ?: continue
+                            val width  = objData["m_Width"].asInt()  ?: continue
+                            val height = objData["m_Height"].asInt() ?: continue
+                            val format = objData["m_TextureFormat"].asInt() ?: continue
 
-                            val imageBytes = readTextureData(objData, resSByName) ?: run {
+                            val rawBytes = readTextureData(objData, resSByName) ?: run {
                                 log.debug("No image data for texture '{}' in {}", name, cab.path)
+                                continue
+                            }
+
+                            val pngBytes = TextureDecoder.toPng(rawBytes, width, height, format) ?: run {
+                                log.warn("Unsupported texture format {} for '{}' ({}x{}), skipping", format, name, width, height)
                                 continue
                             }
 
@@ -117,9 +126,9 @@ class AssetDecodeService(
                                 PutObjectRequest.builder()
                                     .bucket(bucket)
                                     .key(key)
-                                    .contentLength(imageBytes.size.toLong())
+                                    .contentLength(pngBytes.size.toLong())
                                     .build(),
-                                RequestBody.fromBytes(imageBytes),
+                                RequestBody.fromBytes(pngBytes),
                             )
                             count++
                         }
@@ -147,6 +156,13 @@ class AssetDecodeService(
             }
         }
         return count
+    }
+
+    /** Coerces Int or Long TypeTree values to Int. */
+    private fun Any?.asInt(): Int? = when (this) {
+        is Int  -> this
+        is Long -> toInt()
+        else    -> null
     }
 
     /**
