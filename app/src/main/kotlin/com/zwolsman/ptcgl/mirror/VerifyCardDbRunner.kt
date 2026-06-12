@@ -67,7 +67,7 @@ class VerifyCardDbRunner(private val configClient: ConfigDocClient) : Applicatio
         Files.write(fixtureDir.resolve("card-db-sv1-en.bin"), dataBytes)
         log.info("Binary payload: {} bytes", dataBytes.size)
 
-        // --- Decode and inspect ---
+        // --- Decode and inspect EN ---
         log.info("Decoding DataTable…")
         val table = DataTableCodec.decodeFromBase64(tableKey.payloadBase64)
 
@@ -78,5 +78,28 @@ class VerifyCardDbRunner(private val configClient: ConfigDocClient) : Applicatio
 
         log.info("First 3 rows:")
         table.rows.take(3).forEachIndexed { i, row -> log.info("  Row {}: {}", i, row) }
+
+        // --- Fetch and save FR fixture ---
+        val frDocId = "card-database-${template.replace("{0}", "fr")}_0.0"
+        log.info("Fetching FR card DB: {}", frDocId)
+        val frCardDbDoc = configClient.getMultiple(frDocId).first()
+
+        val frTableKey = frCardDbDoc["table"]
+            ?: error("Key 'table' not found in FR doc. Keys present: ${frCardDbDoc.data.keys}")
+
+        Files.writeString(fixtureDir.resolve("card-db-sv1-fr.b64"), frTableKey.payloadBase64)
+        log.info("FR raw base64 payload saved to {}", fixtureDir.resolve("card-db-sv1-fr.b64"))
+
+        val frRawBytes = Base64.getDecoder().decode(frTableKey.payloadBase64)
+        val frEngineByte = frRawBytes[0].toInt() and 0xFF
+        val frDataBytes = if (frEngineByte == 0x00) frRawBytes.copyOfRange(1, frRawBytes.size)
+                          else com.zwolsman.ptcgl.mirror.rainier.codec.QuickLz.decompress(frRawBytes.copyOfRange(1, frRawBytes.size))
+        Files.write(fixtureDir.resolve("card-db-sv1-fr.bin"), frDataBytes)
+        log.info("FR binary payload: {} bytes", frDataBytes.size)
+
+        val frTable = DataTableCodec.decodeFromBase64(frTableKey.payloadBase64)
+        log.info("FR table name  : {}", frTable.name)
+        log.info("FR row count   : {}", frTable.rows.size)
+        log.info("FR columns ({}): {}", frTable.columns.size, frTable.columns.map { it.name })
     }
 }
