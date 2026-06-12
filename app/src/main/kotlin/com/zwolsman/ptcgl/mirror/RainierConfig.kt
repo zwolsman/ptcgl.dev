@@ -1,6 +1,7 @@
 package com.zwolsman.ptcgl.mirror
 
 import com.zwolsman.ptcgl.mirror.rainier.auth.AuthClient
+import com.zwolsman.ptcgl.mirror.rainier.auth.PtcsTokenClient
 import com.zwolsman.ptcgl.mirror.rainier.cdn.CdnClient
 import com.zwolsman.ptcgl.mirror.rainier.cdn.GameSettingsClient
 import com.zwolsman.ptcgl.mirror.rainier.config.ConfigDocClient
@@ -17,7 +18,6 @@ class RainierConfig(
     @Value("\${rainier.base-url}")               private val baseUrl: String,
     @Value("\${rainier.client-type-access-key}") private val clientTypeAccessKey: String,
     @Value("\${rainier.client-id}")              private val clientId: String,
-    @Value("\${rainier.ptcs-token}")             private val ptcsToken: String,
     @Value("\${rainier.app-version}")            private val appVersion: String,
     @Value("\${rainier.platform}")               private val platform: String,
 ) {
@@ -26,9 +26,16 @@ class RainierConfig(
     fun okHttpClient(): OkHttpClient = OkHttpClient()
 
     @Bean
-    fun configDocClient(http: OkHttpClient): ConfigDocClient {
+    fun ptcsTokenClient(http: OkHttpClient): PtcsTokenClient = PtcsTokenClient(http)
+
+    @Bean
+    fun authClient(http: OkHttpClient): AuthClient =
+        AuthClient(http, clientTypeAccessKey, clientId, baseUrl)
+
+    @Bean
+    fun configDocClient(http: OkHttpClient, authService: AuthService): ConfigDocClient {
         log.info("Authenticating with Rainier API…")
-        val session = AuthClient(http, clientTypeAccessKey, clientId, baseUrl).authenticate(ptcsToken)
+        val session = authService.acquireStudioSession()
         log.info("Authenticated, API endpoint: {}", session.apiEndpoint)
         return ConfigDocClient(http, session.apiEndpoint, session.studioToken)
     }
