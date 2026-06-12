@@ -188,8 +188,10 @@ class PlanService(
         val result = CardDbNormalizer.normalize(table, locale)
         cardRepo.upsertCards(result.cards)
         cardRepo.upsertLocalizations(result.localizations)
+        cardRepo.upsertAttacks(result.attacks)
+        cardRepo.upsertAttackLocalizations(result.attackLocalizations)
         revisionRepo.save(docId, doc.revision)
-        log.info("Upserted {} cards from {}", result.cards.size, setCode)
+        log.info("Upserted {} cards ({} attacks) from {}", result.cards.size, result.attacks.size, setCode)
     }
 
     /**
