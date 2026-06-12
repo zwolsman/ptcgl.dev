@@ -168,31 +168,277 @@ Expose `revision` per document to drive incremental Phase A.
 
 ## 9. Data model (Postgres)
 
-```sql
--- Domain (published; consumed by the separate API)
-set(id pk, code, name, series, release_date, revision)
-set_localization(set_id fk, locale, name, primary key(set_id, locale))
-card(id pk, set_id fk, number, rarity, regulation_mark, archetype, hp,
-     types, evolves_from, group_id, ...)          -- locale-invariant facts
-card_localization(card_id fk, locale, name, ...,  primary key(card_id, locale))
-card_variant(id pk, card_id fk, variant, ...)
-set_asset(set_id fk, locale, kind ENUM(SYMBOL,LOGO),
-          s3_key, source_hash, crc,              primary key(set_id, locale, kind))
-card_asset(card_id fk, locale,
-           kind    ENUM(HIRES, THUMB, WHITEPLATE, ETCH, MATERIAL_MANIFEST, RAW),
-           variant text,        -- rarity suffix for MATERIAL_MANIFEST (e.g. 'mph', 'sph'); null for all other kinds
-           s3_key  text,        -- Unity-original path under decoded/ prefix; referenced verbatim by material manifests
-           manifest_json jsonb, -- populated for MATERIAL_MANIFEST kind; stored inline so API needs no S3 fetch
-           source_hash, crc, width, height,
-           primary key(card_id, locale, kind, variant))
-           -- crc from manifest entry; checked first for cheaply detecting new data
+All domain tables (sets, cards, assets) are the **published surface** — consumed by the
+separate API. Operational tables (ledger, auth, runs) are internal to the harvester.
 
--- State / ledger (drives resumability)
+### 9.1 Sets
+
+**`set`** — one row per Pokémon TCG set (locale-invariant facts).
+
+| Column | Type | Nullable | Source | Notes |
+|---|---|---|---|---|
+| `id` | text PK | no | `set-manifest_0.0` manifest `sets[]` | Lowercase set code, e.g. `sv1` |
+| `code` | text UNIQUE | no | same | Same as `id`; kept for readability |
+| `name` | text | no | _(placeholder = code)_ | No authoritative name source in `set-manifest` yet; API may override |
+| `series` | text | yes | `setDetails[code].SeriesId` | e.g. `"Scarlet & Violet"` |
+| `release_date` | date | yes | `setDetails[code].OAReleaseDate` | OLE Automation serial (days since 1899-12-30) converted to calendar date |
+| `revision` | text | yes | `config_revision.revision` for `set-manifest_0.0` | Used to detect content changes on re-fetch |
+
+Additional fields present in `setDetails` that are **not yet stored** (available for future columns):
+
+| Raw field | Description |
+|---|---|
+| `MainSetCount` | Number of cards in the main set |
+| `MasterSetCount` | Number of cards in the master/full set |
+| `SortOrder` | Global display sort order |
+| `SeriesSortOrder` | Sort order within the series |
+| `SetSortOrder` | Sort order within the set group |
+| `SetCategory` | Category enum (e.g. main expansion vs. promo) |
+
+---
+
+**`set_localization`** — locale-specific set names.
+
+| Column | Type | Nullable | Source | Notes |
+|---|---|---|---|---|
+| `set_id` | text FK → `set.id` | no | | |
+| `locale` | text | no | | e.g. `en`, `fr`, `de` |
+| `name` | text | no | _(same placeholder as `set.name` for now)_ | Will be populated from per-locale sources when discovered |
+
+Primary key: `(set_id, locale)`.
+
+---
+
+**`set_asset`** — S3 pointers for set imagery.
+
+| Column | Type | Nullable | Source | Notes |
+|---|---|---|---|---|
+| `set_id` | text FK → `set.id` | no | | |
+| `locale` | text | no | | |
+| `kind` | `set_asset_kind` | no | | `SYMBOL` or `LOGO` |
+| `s3_key` | text | no | Unity bundle internal path | Full `decoded/…` key; verbatim path from the bundle |
+| `source_hash` | text | yes | Asset manifest `hash` field | Full content hash; used for change detection |
+| `crc` | bigint | yes | Asset manifest `crc` field | Cheap first-pass change probe |
+
+Primary key: `(set_id, locale, kind)`.
+
+---
+
+### 9.2 Cards
+
+**`card`** — one row per card number within a set (locale-invariant facts). The live
+`card-database-{set}_{locale}_0.0` DataTable has **63 columns** (verified against the sv1/EN
+fixture; column names are stable across sets). The fields below are the subset currently
+mapped by `CardDbNormalizer`. Source column names are the raw DataTable column names.
+
+| Column | Type | Nullable | Source column (DataTable) | Notes |
+|---|---|---|---|---|
+| `id` | text PK | no | `cardID` | e.g. `sv1_1`; unique across all sets |
+| `set_id` | text FK → `set.id` | no | `setCode` (lowercased) | Derived from `cardID` prefix if `setCode` absent |
+| `number` | text | no | `CompSea Card Number` (fallback: `EN Card #`) | Formatted collector number, e.g. `001` |
+| `rarity` | text | yes | `Loc Rarity Code` | Rarity string code, e.g. `C`, `U`, `R`, `RR`, `SAR` |
+| `regulation_mark` | text | yes | `Regulations symbol` | Single letter, e.g. `G`, `H` |
+| `archetype` | text | yes | `archetypeID` (`System.Int32`) | Numeric gameplay archetype ID |
+| `hp` | int | yes | `HP` (`System.Int32`) | Null for Trainer / Energy cards |
+| `types` | text[] | no | `EN Type` | Single-letter type codes split on `/`, e.g. `["G"]`, `["R","W"]`; empty array for colorless/typeless |
+| `evolves_from` | text | yes | `EN Evolves From` | Pokémon name this card evolves from; null for Basic/non-Pokémon |
+| `group_id` | text | yes | `Group ID` | Groups alternate-art variants of the same card |
+
+#### Complete DataTable column reference (all 63 columns, sv1/EN fixture)
+
+All column names and .NET types as they appear in the raw DataTable. Columns currently
+mapped by `CardDbNormalizer` are marked **captured**; the rest are available for future
+schema expansion.
+
+| DataTable column | .NET type | Status | Notes |
+|---|---|---|---|
+| `cardID` | String | **captured** → `card.id` | Primary identifier, e.g. `sv1_1` |
+| `setCode` | String | **captured** → `card.set_id` | Uppercased in source; lowercased on ingest |
+| `seriesCode` | String | not stored | e.g. `SV` |
+| `CompSea Card Number` | String | **captured** → `card.number` | Formatted collector number, e.g. `001` |
+| `EN Card #` | String | **captured** (fallback) → `card.number` | Legacy format; used when `CompSea Card Number` absent |
+| `EN Expansion Denominator` | String | not stored | Total count in set, e.g. `198` |
+| `longFormID` | String | not stored | Full identifier, e.g. `Pineco_sv1_1_std_Common_NonFoil_None` |
+| `EN Card Name` | String | **captured** → `card_localization.name` | English display name |
+| `LocalizedCardName` | String | **captured** (fallback) → `card_localization.name` | Locale-specific name; used when `EN Card Name` absent |
+| `EN Format` | String | not stored | Format legality code, e.g. `0` |
+| `Regulations symbol` | String | **captured** → `card.regulation_mark` | Single letter, e.g. `G`, `H` |
+| `Release Date` | String | not stored | ISO-8601 string, e.g. `2023-03-30T17:00:00.0000000Z` |
+| `OA Release Date` | Double | not stored | OLE Automation serial date (same conversion as `set.release_date`) |
+| `category` | Byte | not stored | Card category: `1`=Pokémon, `2`=Trainer, `3`=Energy |
+| `archetypeID` | Int32 | **captured** → `card.archetype` | Numeric archetype ID |
+| `HP` | Int32 | **captured** → `card.hp` | Null for Trainer/Energy |
+| `EN Type` | String | **captured** → `card.types` | Single-letter codes, `/`-separated, e.g. `G`, `R/W` |
+| `EN Attack Name` | String | **captured** → `card_attack_localization.name` (EN fallback) | First attack name (English; also the locale col for EN) |
+| `EN Attack Name 2` | String | **captured** → `card_attack_localization.name` (EN fallback) | Second attack name |
+| `EN Attack Name 3` | String | **captured** → `card_attack_localization.name` (EN fallback) | Third attack name |
+| `EN Attack Name 4` | String | **captured** → `card_attack_localization.name` (EN fallback) | Fourth attack name |
+| `EN Attack Text` | String | **captured** → `card_attack_localization.text` (EN fallback) | First attack rules text (English; also the locale col for EN) |
+| `EN Attack Text 2` | String | **captured** → `card_attack_localization.text` (EN fallback) | Second attack rules text |
+| `EN Attack Text 3` | String | **captured** → `card_attack_localization.text` (EN fallback) | Third attack rules text |
+| `EN Attack Text 4` | String | **captured** → `card_attack_localization.text` (EN fallback) | Fourth attack rules text |
+| `{LOCALE} Attack Name` | String | **captured** (non-EN only) → `card_attack_localization.name` | Locale-prefixed column added for non-EN DBs (e.g. `FR Attack Name`); preferred over EN fallback |
+| `{LOCALE} Attack Name 2-4` | String | **captured** (non-EN only) → `card_attack_localization.name` | Slots 2-4 locale attack names |
+| `{LOCALE} Attack Text` | String | **captured** (non-EN only) → `card_attack_localization.text` | Locale-prefixed attack rules text |
+| `{LOCALE} Attack Text 2-4` | String | **captured** (non-EN only) → `card_attack_localization.text` | Slots 2-4 locale attack texts |
+| `EN Cost` | String | **not captured** | First attack energy cost, e.g. `CC`, `GGG` |
+| `EN Cost 2` | String | **not captured** | Second attack energy cost |
+| `EN Cost 3` | String | **not captured** | Third attack energy cost |
+| `EN Cost 4` | String | **not captured** | Fourth attack energy cost |
+| `Damage` | String | **not captured** | First attack damage value, e.g. `10`, `120+` |
+| `Damage 2` | String | **not captured** | Second attack damage |
+| `Damage 3` | String | **not captured** | Third attack damage |
+| `Damage 4` | String | **not captured** | Fourth attack damage |
+| `attackType1` | Int32 | **not captured** | First attack type enum (nullable) |
+| `attackType2` | Int32 | **not captured** | Second attack type enum (nullable) |
+| `attackType3` | Int32 | **not captured** | Third attack type enum (nullable) |
+| `attackType4` | Int32 | **not captured** | Fourth attack type enum (nullable) |
+| `attackID0` | Int32 | **not captured** | First attack identifier hash |
+| `attackID1` | Int32 | **not captured** | Second attack identifier hash |
+| `attackID2` | Int32 | **not captured** | Third attack identifier hash |
+| `attackID3` | Int32 | **not captured** | Fourth attack identifier hash |
+| `Retreat` | Int32 | **not captured** | Retreat energy cost (number of energies) |
+| `EN Weakness Type` | String | **not captured** | Weakness type code, e.g. `R` (Fire) |
+| `Weakness Amount` | String | **not captured** | Weakness multiplier, e.g. `2` (for ×2) |
+| `EN Resistance Type` | String | **not captured** | Resistance type code |
+| `Resistance Amount` | String | **not captured** | Resistance modifier value |
+| `EN Evolves From` | String | **captured** → `card.evolves_from` | Pokémon name this evolves from |
+| `baseEvolution` | String | not stored | Base evolution asset key, e.g. `Pineco_0007` |
+| `evolvesInto` | String | not stored | Comma-separated evolution targets, e.g. `Forretress,Forretress ex` |
+| `Ultra Beast?` | String | not stored | Flag; `""` or `"true"` |
+| `Group ID` | String | **captured** → `card.group_id` | Groups alternate-art variants |
+| `variant` | UInt32 | not stored | Numeric variant identifier |
+| `Variant Suffix` | String | not stored | String suffix for variant, e.g. `mph`, `sph` |
+| `Set Suffix` | String | not stored | Set number within series, e.g. `1` in `SV1` |
+| `CompSea Rarity Code` | String | not stored | Alternate rarity code system |
+| `Dust Rarity Code` | String | not stored | Crafting-dust rarity code |
+| `Loc Rarity Code` | String | **captured** → `card.rarity` | Display rarity code, e.g. `C`, `U`, `R`, `RR`, `SAR` |
+| `Foil Effect` | String | not stored | Foil finish name, e.g. `NonFoil`, `Holo` |
+| `Foil Mask` | String | not stored | Foil mask asset name; links to material manifest |
+| `Craftable` | Boolean | not stored | Whether the card can be crafted |
+| `CraftableDateUnixTime` | Int64 | not stored | Unix timestamp (seconds) when the card became craftable |
+| `quantity` | Int32 | not stored | Unknown — always `0` in observed data |
+| `extraSearchText` | String | not stored | Pre-built search blob (card name + attack text lowercased) |
+
+> **CardDbNormalizer is incomplete.** Attacks (`EN Attack Name/Text/Cost`, `Damage`), combat
+> stats (`Retreat`, `EN Weakness Type`, `EN Resistance Type`), and several other gameplay
+> fields are present in the DataTable but not yet stored in Postgres or exposed by the
+> domain records. The schema will need new columns (or a `card_attack` child table) before
+> the API can serve full card data.
+
+---
+
+**`card_localization`** — locale-specific card names.
+
+| Column | Type | Nullable | Source column | Notes |
+|---|---|---|---|---|
+| `card_id` | text FK → `card.id` | no | | |
+| `locale` | text | no | | e.g. `en` |
+| `name` | text | no | `EN Card Name` (fallback: `LocalizedCardName`) | The card's display name in this locale |
+
+Primary key: `(card_id, locale)`.
+
+---
+
+**`card_attack`** — locale-invariant per-attack data (cost and damage are energy codes /
+numbers, identical across all locales).
+
+| Column | Type | Nullable | Notes |
+|---|---|---|---|
+| `card_id` | text FK → `card.id` | no | |
+| `slot` | int | no | 1-based position on the card (1..4) |
+| `cost` | text | yes | Energy cost string, e.g. `CC`, `GGG`; null when slot unused |
+| `damage` | text | yes | Damage value, e.g. `10`, `120+`; null for effect-only attacks |
+| `attack_type` | int | yes | `attackType` enum value from DataTable |
+| `attack_id` | int | yes | `attackID` hash (signed Int32) from DataTable |
+
+Primary key: `(card_id, slot)`.
+
+---
+
+**`card_attack_localization`** — locale-specific attack name and rules text. Must be upserted after `card_attack` (FK constraint).
+
+| Column | Type | Nullable | Source column | Notes |
+|---|---|---|---|---|
+| `card_id` | text | no | | |
+| `slot` | int | no | | 1-based, matches `card_attack.slot` |
+| `locale` | text | no | | e.g. `en`, `fr` |
+| `name` | text | no | `{LOCALE} Attack Name[/ 2/3/4]` → fallback `EN Attack Name[/ 2/3/4]` | Locale-specific attack name |
+| `text` | text | yes | `{LOCALE} Attack Text[/ 2/3/4]` → fallback `EN Attack Text[/ 2/3/4]` | Rules text; null for attacks with no effect description |
+
+Primary key: `(card_id, slot, locale)`.
+Foreign key: `(card_id, slot)` → `card_attack`.
+
+**Locale column naming — verified live against EN and FR fixtures:**
+
+- Non-EN DataTables have more columns than EN (FR: 72 vs EN: 63). Each locale adds its own
+  attack name/text columns.
+- Attack columns are prefixed with the uppercase locale code: `FR Attack Name`, `FR Attack Name 2`,
+  `FR Attack Text`, etc. There is **no** generic `LocalizedAttackName` column — each locale
+  adds its own prefixed columns.
+- `LocalizedCardName` is the **only** generic localized column; it works across all locales
+  (e.g., `LocalizedCardName = Pomdepik` in the FR DB).
+- The `EN Attack Name` / `EN Attack Text` columns exist in every locale's DataTable and always
+  carry the English value — they serve as the fallback when the locale column is absent.
+- `{LOCALE}` is the locale code in uppercase, matching the `cardsLangTag` used to build the
+  doc ID (e.g., `fr` → `FR`, `de` → `DE`).
+- All locale-invariant fields (HP, Retreat, Damage, EN Cost, weakness/resistance type codes,
+  Rarity, category, archetypeID, etc.) are confirmed identical across EN and FR.
+
+---
+
+**`card_variant`** — rarity/finish variants that share the same `card_id`.
+
+| Column | Type | Nullable | Notes |
+|---|---|---|---|
+| `id` | bigserial PK | no | Surrogate |
+| `card_id` | text FK → `card.id` | no | |
+| `variant` | text | no | Rarity suffix, e.g. `mph` (master promo holo), `sph` (special holo) |
+
+Unique constraint: `(card_id, variant)`.
+
+---
+
+**`card_asset`** — S3 pointers and metadata for card imagery.
+
+| Column | Type | Nullable | Notes |
+|---|---|---|---|
+| `card_id` | text FK → `card.id` | no | |
+| `locale` | text | no | |
+| `kind` | `card_asset_kind` | no | One of: `HIRES`, `THUMB`, `WHITEPLATE`, `ETCH`, `MATERIAL_MANIFEST`, `RAW` |
+| `variant` | text | no (default `''`) | Rarity suffix (`mph`, `sph`, …) for `MATERIAL_MANIFEST`; empty string for all other kinds |
+| `s3_key` | text | yes | Full `decoded/…` key; verbatim Unity bundle internal path; material manifests reference other assets by these same paths |
+| `manifest_json` | jsonb | yes | Populated only for `kind = MATERIAL_MANIFEST`; stored inline so the API resolves image URLs without S3 round-trips |
+| `source_hash` | text | yes | Full content hash from asset manifest |
+| `crc` | bigint | yes | CRC from manifest entry; cheap change-detection probe |
+| `width` | int | yes | Decoded image width in pixels |
+| `height` | int | yes | Decoded image height in pixels |
+
+Primary key: `(card_id, locale, kind, variant)`.
+
+`card_asset_kind` meanings:
+
+| Kind | Description |
+|---|---|
+| `HIRES` | Full-resolution card image (PNG) |
+| `THUMB` | Thumbnail card image (`_t` suffix in asset name) |
+| `WHITEPLATE` | White-plate overlay image |
+| `ETCH` | Etched/texture overlay |
+| `MATERIAL_MANIFEST` | Unity material manifest JSON; `manifest_json` populated inline |
+| `RAW` | Raw Unity bundle bytes retained for reproducibility |
+
+---
+
+### 9.3 Operational tables
+
+```sql
+-- Ledger: asset_object drives resumability (see §4 pipeline)
 asset_object(asset_name, locale, bucket, crc, source_hash, s3_key_raw, s3_key_decoded,
              status ENUM(PENDING,IN_PROGRESS,DONE,FAILED_RETRYABLE,SKIPPED,STALE),
              attempts, last_error, lease_until, updated_at,
              primary key(asset_name, locale))
-             -- crc from manifest entry (cheap change-detection probe); source_hash is the full content hash
+             -- crc: cheap first-pass change probe; source_hash: full content hash
+
 config_revision(doc_id pk, revision, fetched_at)
 auth_state(id pk=1, refresh_token, refresh_token_updated_at, last_studio_iss, note)
 ingest_run(id pk, started_at, finished_at, planned, done, skipped, rate_limited, summary)
