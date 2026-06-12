@@ -129,18 +129,46 @@ STALE (no longer desired)
 
 ## 6. Authentication & single-use refresh-token rotation
 
-Chain: `routing/route` → `token/register` (guest) → **refresh PTCS token** → `token/auth` (PTOK) → studio Bearer.
+Full chain on startup: **PTCS refresh** → `routing/route` → `token/register` (guest) → `token/auth` (PTOK) → studio Bearer.
 
 Because the PTCS refresh token is **single-use and rotates**, rotation is the highest
-operational risk. Strategy (self-hosted, no cloud secret manager):
+operational risk.
 
-- The live refresh token lives in Postgres `auth_state` (single row), co-located with the ledger so updates are **transactional**.
-- Rotation: `SELECT ... FOR UPDATE` the row → call the refresh endpoint → on HTTP 200, **write the new refresh token and COMMIT immediately**, before any other work.
-- Access/studio JWTs are in-memory only (~1 h TTL), minted fresh per run.
-- **Bootstrap & break-glass:** the *initial* refresh token is seeded from a Kubernetes `Secret` (or `harvest login --refresh-token=…`). If the chain ever breaks (reuse-detected), the job fails loudly ("needs re-login") and the operator re-seeds via the same path.
+### PTCS token refresh (verified from decompile)
+
+- **Endpoint:** `POST https://access.pokemon.com/oauth2/token`
+- **Content-Type:** `application/x-www-form-urlencoded`
+- **Body:** `client_id=tpci-tcg-app&grant_type=refresh_token&refresh_token={token}`
+- **Response:** `{ "access_token": "…", "refresh_token": "…", "expires_in": 3600 }` (both tokens rotate; access token lasts ~1 h)
+
+### Strategy (self-hosted, no cloud secret manager)
+
+`auth_state` stores both the **refresh token** and the cached **access token** (+ its
+expiry) so the refresh endpoint is called only when necessary:
+
+1. **Startup — fast path (token valid):** read `auth_state`; if `access_token_expires_at > now + 5 min`, use the cached access token directly. No refresh endpoint call, no lock.
+2. **Startup — slow path (token expired/absent):**
+   - `SELECT … FOR UPDATE` the `auth_state` row (prevents concurrent CronJob instances from double-spending the refresh token).
+   - Re-check expiry after acquiring the lock (another run may have refreshed while waiting).
+   - If still expired: call the PTCS refresh endpoint → on HTTP 200, write the new `access_token`, `access_token_expires_at`, `refresh_token`, and `refresh_token_updated_at` → **COMMIT immediately**, before any other work.
+3. Proceed with the studio chain: `routing/route` → `token/register` → `token/auth (PTOK)` → studio Bearer JWT (in-memory only, ~1 h TTL, not persisted).
+4. If the refresh endpoint returns an error (reuse-detected, account suspended, etc.), the job fails loudly ("needs re-login") and exits non-zero. The operator re-seeds via `--login`.
+
+### Bootstrap & break-glass
+
+The *initial* refresh token is seeded via `harvest --login --refresh-token=<token>` (from
+a browser OAuth2/PKCE login flow). This writes `auth_state(id=1)` and leaves `access_token`
+null so the very first run triggers the slow path immediately. Re-seeding via the same
+command re-seeds the row.
 
 ```
-auth_state(id=1, refresh_token text, refresh_token_updated_at, last_studio_iss, note)
+auth_state(id=1,
+    refresh_token             text NOT NULL,
+    refresh_token_updated_at  timestamptz NOT NULL,
+    access_token              text,               -- cached; null until first refresh
+    access_token_expires_at   timestamptz,        -- null until first refresh
+    last_studio_iss           text,
+    note                      text)
 ```
 
 ---
