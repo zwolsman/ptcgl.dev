@@ -19,6 +19,7 @@ import com.zwolsman.ptcgl.unity.bundle.UnityBundle
 import com.zwolsman.ptcgl.unity.manifest.AssetManifestExtractor
 import com.zwolsman.ptcgl.unity.serialized.SerializedFileParser
 import org.slf4j.LoggerFactory
+import org.springframework.context.annotation.Lazy
 import org.springframework.stereotype.Service
 import java.time.LocalDate
 
@@ -27,7 +28,7 @@ private val mapper = jacksonObjectMapper()
 
 @Service
 class PlanService(
-    private val configClient: ConfigDocClient,
+    @Lazy private val configClient: ConfigDocClient,
     private val cdnClient: CdnClient,
     private val setRepo: SetRepository,
     private val cardRepo: CardRepository,

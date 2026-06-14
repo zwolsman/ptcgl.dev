@@ -9,6 +9,7 @@ import com.zwolsman.ptcgl.unity.serialized.SerializedFileParser
 import org.slf4j.LoggerFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
+import org.springframework.context.annotation.Lazy
 import org.springframework.core.annotation.Order
 import org.springframework.stereotype.Component
 import java.nio.file.Files
@@ -29,7 +30,7 @@ private val mapper = jacksonObjectMapper()
 @Component
 @Order(2)
 class VerifyManifestRunner(
-    private val configClient: ConfigDocClient,
+    @Lazy private val configClient: ConfigDocClient,
     private val cdnClient: CdnClient,
 ) : ApplicationRunner {
 

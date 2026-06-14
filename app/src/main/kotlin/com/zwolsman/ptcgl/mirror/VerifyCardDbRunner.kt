@@ -7,6 +7,7 @@ import com.zwolsman.ptcgl.mirror.rainier.config.ConfigDocClient
 import org.slf4j.LoggerFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
+import org.springframework.context.annotation.Lazy
 import org.springframework.stereotype.Component
 import java.nio.file.Files
 import java.nio.file.Path
@@ -25,7 +26,7 @@ private val mapper = jacksonObjectMapper()
  *     ./gradlew :app:bootRun --args='--verify-card-db'
  */
 @Component
-class VerifyCardDbRunner(private val configClient: ConfigDocClient) : ApplicationRunner {
+class VerifyCardDbRunner(@Lazy private val configClient: ConfigDocClient) : ApplicationRunner {
 
     override fun run(args: ApplicationArguments) {
         if (!args.containsOption("verify-card-db")) return
