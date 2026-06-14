@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ptcgl-mirror
+  namespace: ptcgl-mirror
+spec:
+  schedule: "0 */6 * * *"   # every 6 hours
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: mirror
+              image: ghcr.io/mzwolsman/ptcgl-mirror:latest
+              # Default CMD is --plan; override args for one-off operations:
+              #   kubectl create job --from=cronjob/ptcgl-mirror login -- --login --refresh-token=<token>
+              envFrom:
+                - configMapRef:
+                    name: app-config
+                - secretRef:
+                    name: app-credentials
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "1Gi"

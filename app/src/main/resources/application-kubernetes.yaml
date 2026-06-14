@@ -1,0 +1,6 @@
+spring:
+  autoconfigure:
+    exclude: []   # re-enable DataSource + Flyway excluded in the base profile
+  flyway:
+    enabled: true
+  # datasource url/username/password come from env vars (SPRING_DATASOURCE_*)

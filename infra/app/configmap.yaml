@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: ptcgl-mirror
+data:
+  SPRING_PROFILES_ACTIVE: kubernetes
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ptcgl_mirror
+  MIRROR_S3_BUCKET: ptcgl-mirror
+  MIRROR_S3_REGION: us-east-1
+  MIRROR_S3_FORCE_PATH_STYLE: "false"
