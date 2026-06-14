@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ptcgl-mirror
+  namespace: argocd
+  annotations:
+    # ArgoCD Image Updater: watch for digest changes on the :latest tag.
+    # When a new image is pushed (GitHub Actions on push to main), Image Updater
+    # detects the changed digest and triggers a re-sync without touching git.
+    argocd-image-updater.argoproj.io/image-list: mirror=ghcr.io/mzwolsman/ptcgl-mirror
+    argocd-image-updater.argoproj.io/mirror.update-strategy: digest
+    argocd-image-updater.argoproj.io/mirror.tag-override: latest
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/mzwolsman/ptcgl-mirror
+    targetRevision: HEAD
+    path: infra
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
