@@ -126,36 +126,34 @@ class PlanService(
         log.info("Expecting {} asset names from {} card keys and {} sets",
             expectedAssets.size, cardKeys.size, setIds.size)
 
-        // --- 5. Asset-bundle manifest → bucket list (rebuild ledger only when manifest changed) ---
-        if (!revisionRepo.isUpToDate(bundleManifestId, bundleManifestDoc.revision)) {
-            val manifestEntry = bundleManifestDoc["manifest"]
-                ?: error("asset-bundle-manifest missing 'manifest' key")
-            @Suppress("UNCHECKED_CAST")
-            val buckets = (mapper.readValue(manifestEntry.payloadBase64, Map::class.java)["directories"] as? List<*>)
-                ?.filterIsInstance<String>()
-                ?: error("asset-bundle-manifest missing 'directories' array")
+        // --- 5. Asset-bundle manifest → bucket list → rebuild ledger ---
+        // Always rebuild: expected assets are derived from the DB (which changes with scope/set filter),
+        // so a matching manifest revision is not sufficient to skip this step.
+        val manifestEntry = bundleManifestDoc["manifest"]
+            ?: error("asset-bundle-manifest missing 'manifest' key")
+        @Suppress("UNCHECKED_CAST")
+        val buckets = (mapper.readValue(manifestEntry.payloadBase64, Map::class.java)["directories"] as? List<*>)
+            ?.filterIsInstance<String>()
+            ?: error("asset-bundle-manifest missing 'directories' array")
 
-            log.info("Found {} CDN buckets", buckets.size)
+        log.info("Found {} CDN buckets", buckets.size)
 
-            // --- 6. Download per-bucket manifest bundles → parse → filter → accumulate ledger entries ---
-            val desired = mutableListOf<AssetLedgerEntry>()
+        // --- 6. Download per-bucket manifest bundles → parse → filter → accumulate ledger entries ---
+        val desired = mutableListOf<AssetLedgerEntry>()
 
-            for (bucket in buckets) {
-                val entries = processBucketManifest(bucket, locale, expectedAssets)
-                desired += entries
-            }
-
-            log.info("Upserting {} asset_object ledger entries (filtered from full manifest)", desired.size)
-            assetRepo.upsertDesiredAssets(desired)
-
-            val activeAssets = desired.map { it.assetName to it.locale }.toSet()
-            assetRepo.markStale(activeAssets)
-
-            revisionRepo.save(bundleManifestId, bundleManifestDoc.revision)
-            log.info("Phase A ledger complete. {} desired assets in ledger.", desired.size)
-        } else {
-            log.info("asset-bundle-manifest unchanged (rev={}), skipping ledger rebuild", bundleManifestDoc.revision)
+        for (bucket in buckets) {
+            val entries = processBucketManifest(bucket, locale, expectedAssets)
+            desired += entries
         }
+
+        log.info("Upserting {} asset_object ledger entries (filtered from full manifest)", desired.size)
+        assetRepo.upsertDesiredAssets(desired)
+
+        val activeAssets = desired.map { it.assetName to it.locale }.toSet()
+        assetRepo.markStale(activeAssets)
+
+        revisionRepo.save(bundleManifestId, bundleManifestDoc.revision)
+        log.info("Phase A ledger complete. {} desired assets in ledger.", desired.size)
 
         // --- 6. Download PENDING assets from CDN → S3 (always runs) ---
         log.info("Phase B: downloading assets from CDN to S3…")
