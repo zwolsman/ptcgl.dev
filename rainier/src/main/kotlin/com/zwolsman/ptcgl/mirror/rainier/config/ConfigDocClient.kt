@@ -34,13 +34,13 @@ data class ConfigDoc(
     operator fun get(key: String): ConfigDocEntry? = data[key]
 }
 
-class ConfigDocClient(
+open class ConfigDocClient(
     private val http: OkHttpClient,
     private val apiEndpoint: String,
     private val studioToken: String,
 ) {
     /** Fetch one or more config documents by ID. Returns results in the same order. */
-    fun getMultiple(vararg ids: String): List<ConfigDoc> {
+    open fun getMultiple(vararg ids: String): List<ConfigDoc> {
         val body = mapper.writeValueAsString(
             mapOf("requests" to ids.map { mapOf("id" to it) })
         )

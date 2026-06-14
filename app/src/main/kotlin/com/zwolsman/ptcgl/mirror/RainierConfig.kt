@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.context.annotation.Lazy
 
 private val log = LoggerFactory.getLogger(RainierConfig::class.java)
 
@@ -33,6 +34,7 @@ class RainierConfig(
         AuthClient(http, clientTypeAccessKey, clientId, baseUrl)
 
     @Bean
+    @Lazy
     fun configDocClient(http: OkHttpClient, authService: AuthService): ConfigDocClient {
         log.info("Authenticating with Rainier API…")
         val session = authService.acquireStudioSession()
