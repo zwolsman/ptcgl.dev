@@ -2,7 +2,7 @@ package com.zwolsman.ptcgl.mirror.api.controller
 
 import com.zwolsman.ptcgl.mirror.api.db.CardQueryRepository
 import com.zwolsman.ptcgl.mirror.api.db.SetQueryRepository
-import com.zwolsman.ptcgl.mirror.api.model.CardResponse
+import com.zwolsman.ptcgl.mirror.api.model.CardSummaryResponse
 import com.zwolsman.ptcgl.mirror.api.model.SetResponse
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.GetMapping
@@ -34,5 +34,5 @@ class SetController(
     fun getCards(
         @PathVariable id: String,
         @RequestParam(defaultValue = "en") locale: String,
-    ): List<CardResponse> = cardRepo.findBySetId(id, locale)
+    ): List<CardSummaryResponse> = cardRepo.findSummariesBySetId(id, locale)
 }

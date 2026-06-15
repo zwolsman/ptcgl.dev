@@ -31,6 +31,14 @@ data class SetResponse(
     val masterSetCount: Int?,
 )
 
+data class CardSummaryResponse(
+    val id: String,
+    val number: String,
+    val position: String?,
+    val name: String?,
+    val thumb: String?,
+)
+
 data class CardResponse(
     val id: String,
     val setId: String,
@@ -75,4 +83,5 @@ data class CardAssets(
     val thumb: String?,
     val whiteplate: String?,
     val etch: String?,
+    val foilType: String?,
 )

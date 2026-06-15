@@ -3,6 +3,7 @@ package com.zwolsman.ptcgl.mirror.api.db
 import com.zwolsman.ptcgl.mirror.api.model.AttackResponse
 import com.zwolsman.ptcgl.mirror.api.model.CardAssets
 import com.zwolsman.ptcgl.mirror.api.model.CardResponse
+import com.zwolsman.ptcgl.mirror.api.model.CardSummaryResponse
 import com.zwolsman.ptcgl.mirror.api.model.OtherPrint
 import com.zwolsman.ptcgl.mirror.api.model.Resistance
 import com.zwolsman.ptcgl.mirror.api.model.Weakness
@@ -17,6 +18,46 @@ class CardQueryRepository(
     private val jdbc: JdbcTemplate,
     @param:Value("\${mirror.api.asset-base-url}") private val assetBaseUrl: String,
 ) {
+
+    fun findSummariesBySetId(setId: String, locale: String): List<CardSummaryResponse> {
+        val cards = jdbc.query(
+            """
+            SELECT c.id, c.number, s.main_set_count
+              FROM card c
+              LEFT JOIN "set" s ON s.id = c.set_id
+             WHERE c.set_id = ? AND c.id ~ '_[0-9]+$'
+             ORDER BY c.number
+            """.trimIndent(),
+            { rs, _ -> Triple(rs.getString("id"), rs.getString("number"), rs.getObject("main_set_count") as? Int) },
+            setId,
+        )
+        if (cards.isEmpty()) return emptyList()
+
+        val ids = cards.map { it.first }
+
+        val names = queryByIds<Pair<String, String>>(
+            "SELECT card_id, name FROM card_localization WHERE locale = ? AND card_id = ANY(?)",
+            ids, locale,
+        ) { rs, _ -> rs.getString("card_id") to rs.getString("name") }.toMap()
+
+        val thumbAssets = queryByIds<Pair<String, String>>(
+            "SELECT asset_name, s3_key_decoded FROM asset_object WHERE asset_name = ANY(?) AND s3_key_decoded IS NOT NULL",
+            cards.map { (_, number, _) -> "${setId}_${locale}_${number}_t" },
+        ) { rs, _ -> rs.getString("asset_name") to rs.getString("s3_key_decoded") }.toMap()
+
+        return cards.map { (id, number, mainSetCount) ->
+            val formatted = number.toIntOrNull()?.toString() ?: number
+            val thumbAssetName = "${setId}_${locale}_${number}_t"
+            val thumbDecoded = thumbAssets[thumbAssetName]
+            CardSummaryResponse(
+                id       = id,
+                number   = formatted,
+                position = mainSetCount?.let { "$formatted / $it" },
+                name     = names[id],
+                thumb    = thumbDecoded?.let { assetUrl(thumbAssetName, it) },
+            )
+        }
+    }
 
     fun findBySetId(setId: String, locale: String): List<CardResponse> {
         val cards = jdbc.query(
@@ -132,16 +173,30 @@ class CardQueryRepository(
         val allAssetNames = (thumbNames.keys + hiresNames.keys + siblingThumbAssetNames.values).distinct()
 
         val assetByName = queryByIds<AssetRow>(
-            "SELECT asset_name, s3_key_decoded, whiteplate_name, etch_name FROM asset_object WHERE asset_name = ANY(?) AND s3_key_decoded IS NOT NULL",
+            "SELECT asset_name, s3_key_decoded FROM asset_object WHERE asset_name = ANY(?) AND s3_key_decoded IS NOT NULL",
             allAssetNames,
         ) { rs, _ ->
             AssetRow(
-                assetName      = rs.getString("asset_name"),
-                s3KeyDecoded   = rs.getString("s3_key_decoded"),
-                whiteplateName = rs.getString("whiteplate_name"),
-                etchName       = rs.getString("etch_name"),
+                assetName    = rs.getString("asset_name"),
+                s3KeyDecoded = rs.getString("s3_key_decoded"),
             )
         }.associateBy { it.assetName }
+
+        // material_manifest is keyed by (bundle_asset_name = hires name, variant_suffix)
+        val manifestByKey: Map<Pair<String, String>, ManifestRow> = if (thumbOnly || hiresNames.isEmpty()) emptyMap() else {
+            queryByIds<ManifestRow>(
+                "SELECT bundle_asset_name, variant_suffix, whiteplate_name, etch_name, foil_type, shader_path FROM material_manifest WHERE bundle_asset_name = ANY(?)",
+                hiresNames.keys.toList(),
+            ) { rs, _ ->
+                ManifestRow(
+                    bundleAssetName = rs.getString("bundle_asset_name"),
+                    variantSuffix   = rs.getString("variant_suffix"),
+                    whiteplateName  = rs.getString("whiteplate_name"),
+                    etchName        = rs.getString("etch_name"),
+                    foilType        = rs.getString("foil_type"),
+                )
+            }.associateBy { it.bundleAssetName to it.variantSuffix }
+        }
 
         // Reverse-map sibling thumb asset names → their thumb URL
         val siblingThumbUrl: Map<String, String?> = siblingThumbAssetNames.mapValues { (_, thumbAssetName) ->
@@ -150,11 +205,13 @@ class CardQueryRepository(
 
         return cards.map { c ->
             val formattedNumber = c.number.toIntOrNull()?.toString() ?: c.number
-            val position   = c.mainSetCount?.let { "$formattedNumber / $it" }
-            val thumbName  = "${c.setId}_${locale}_${c.number}_t"
-            val hiresName  = "${c.setId}_${locale}_${c.number}"
-            val hiresAsset = assetByName[hiresName]
-            val thumbAsset = assetByName[thumbName]
+            val position      = c.mainSetCount?.let { "$formattedNumber / $it" }
+            val thumbName     = "${c.setId}_${locale}_${c.number}_t"
+            val hiresName     = "${c.setId}_${locale}_${c.number}"
+            val variantSuffix = if (c.id.substringAfterLast('_').all(Char::isDigit)) "" else c.id.substringAfterLast('_')
+            val hiresAsset    = assetByName[hiresName]
+            val thumbAsset    = assetByName[thumbName]
+            val manifest      = manifestByKey[hiresName to variantSuffix]
 
             val siblings = c.archetype?.let { archetypeRows[it] } ?: emptyList()
             val variants = siblings
@@ -197,13 +254,15 @@ class CardQueryRepository(
                         thumb      = thumbAsset?.let { assetUrl(thumbName, it.s3KeyDecoded) },
                         whiteplate = null,
                         etch       = null,
+                        foilType   = null,
                     )
                 } else {
                     CardAssets(
                         hires      = hiresAsset?.let { assetUrl(hiresName, it.s3KeyDecoded) },
                         thumb      = thumbAsset?.let { assetUrl(thumbName, it.s3KeyDecoded) },
-                        whiteplate = hiresAsset?.whiteplateName?.let { assetUrl(it, hiresAsset.s3KeyDecoded) },
-                        etch       = hiresAsset?.etchName?.let { assetUrl(it, hiresAsset.s3KeyDecoded) },
+                        whiteplate = manifest?.whiteplateName?.let { hiresAsset?.let { a -> assetUrl(it, a.s3KeyDecoded) } },
+                        etch       = manifest?.etchName?.let { hiresAsset?.let { a -> assetUrl(it, a.s3KeyDecoded) } },
+                        foilType   = manifest?.foilType?.let { camelToSpaced(it) },
                     )
                 },
             )
@@ -212,6 +271,9 @@ class CardQueryRepository(
 
     private fun assetUrl(assetName: String, s3KeyDecoded: String) =
         "$assetBaseUrl/$s3KeyDecoded/$assetName.png"
+
+    private val camelSplit = Regex("[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
+    private fun camelToSpaced(s: String) = camelSplit.findAll(s).joinToString(" ") { it.value }
 
     private fun categoryName(category: Int?) = when (category) {
         1    -> "POKEMON"
@@ -297,7 +359,13 @@ class CardQueryRepository(
     private data class AssetRow(
         val assetName: String,
         val s3KeyDecoded: String,
+    )
+
+    private data class ManifestRow(
+        val bundleAssetName: String,
+        val variantSuffix: String,
         val whiteplateName: String?,
         val etchName: String?,
+        val foilType: String?,
     )
 }
