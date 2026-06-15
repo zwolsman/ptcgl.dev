@@ -120,7 +120,8 @@ class AssetDecodeService(
         val cabFiles = bundleFiles.filter { !it.path.endsWith(".resS", ignoreCase = true) }
 
         var count = 0
-        var primaryTextureName: String? = null
+        var firstTextureName: String? = null   // fallback: first Texture2D m_Name encountered
+        var hiresFromManifest: String? = null  // _c from base MaterialManifest — explicit hires ref
         val manifests = mutableListOf<ManifestData>()
 
         for (cab in cabFiles) {
@@ -163,7 +164,7 @@ class AssetDecodeService(
                                     .build(),
                                 RequestBody.fromBytes(pngBytes),
                             )
-                            if (primaryTextureName == null) primaryTextureName = name
+                            if (firstTextureName == null) firstTextureName = name
                             count++
                         }
 
@@ -174,6 +175,10 @@ class AssetDecodeService(
                             if (name.startsWith("MaterialManifest")) {
                                 // suffix: "" for standard, "ph" for MaterialManifest_ph, etc.
                                 val suffix = name.removePrefix("MaterialManifest").removePrefix("_")
+                                if (suffix.isEmpty()) {
+                                    // _c on the base manifest names the card's hires texture
+                                    hiresFromManifest = (objData["_c"] as? String)?.takeIf { it.isNotBlank() }
+                                }
                                 manifests += ManifestData(
                                     variantSuffix  = suffix,
                                     whiteplateName = (objData["_w"] as? String)?.takeIf { it.isNotBlank() },
@@ -201,7 +206,7 @@ class AssetDecodeService(
                 }
             }
         }
-        return DecodeResult(extractedCount = count, primaryTextureName = primaryTextureName, manifests = manifests)
+        return DecodeResult(extractedCount = count, primaryTextureName = hiresFromManifest ?: firstTextureName, manifests = manifests)
     }
 
     /** Coerces Int or Long TypeTree values to Int. */
