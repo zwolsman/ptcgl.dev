@@ -16,7 +16,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: mirror
-              image: ghcr.io/mzwolsman/ptcgl-mirror:latest
+              image: ghcr.io/zwolsman/ptcgl-mirror:latest
               # Default CMD is --plan; override args for one-off operations:
               #   kubectl create job --from=cronjob/ptcgl-mirror login -- --login --refresh-token=<token>
               envFrom:

@@ -82,7 +82,7 @@ kubectl apply -f infra/argocd-app.yaml
 ```
 
 The Application watches the `infra/` directory in git and re-deploys whenever the
-`ghcr.io/mzwolsman/ptcgl-mirror:latest` digest changes (i.e. on every push to `main`).
+`ghcr.io/zwolsman/ptcgl-mirror:latest` digest changes (i.e. on every push to `main`).
 
 ## Configuration reference
 
