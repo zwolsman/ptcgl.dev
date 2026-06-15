@@ -1,12 +1,20 @@
 package com.zwolsman.ptcgl.mirror.api.model
 
+import java.time.Instant
 import java.time.LocalDate
+
+data class ApiStatus(
+    val sets: Int,
+    val cards: Int,
+    val lastSync: Instant?,
+)
 
 data class SetResponse(
     val id: String,
     val code: String,
     val series: String?,
     val releaseDate: LocalDate?,
+    val totalCards: Int?,
     /** locale → localized name */
     val localizations: Map<String, String>,
 )

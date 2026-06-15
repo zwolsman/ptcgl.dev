@@ -9,10 +9,18 @@ spring:
     enabled: false   # schema migrations are run only by the CronJob app
   jackson:
     default-property-inclusion: non_null
+  mvc:
+    throw-exception-if-no-handler-found: true
+  web:
+    resources:
+      add-mappings: false
+
+server:
+  port: 8080
+  error:
+    whitelabel:
+      enabled: false
 
 mirror:
   api:
     asset-base-url: ${MIRROR_API_ASSET_BASE_URL:http://localhost:9000/ptcgl-mirror}
-
-server:
-  port: 8080
