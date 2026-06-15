@@ -12,10 +12,9 @@ class SetQueryRepository(private val jdbc: JdbcTemplate) {
     fun findAll(): List<SetResponse> {
         val sets = jdbc.query(
             """
-            SELECT s.id, s.code, s.series, s.release_date, c.total_cards
-            FROM "set" s
-            LEFT JOIN set_compendium c ON c.set_id = s.id
-            ORDER BY s.release_date DESC NULLS LAST
+            SELECT id, code, series, release_date, main_set_count, master_set_count
+            FROM "set"
+            ORDER BY release_date DESC NULLS LAST
             """.trimIndent()
         ) { rs, _ -> rs.toSetRow() }
         if (sets.isEmpty()) return emptyList()
@@ -28,12 +27,13 @@ class SetQueryRepository(private val jdbc: JdbcTemplate) {
 
         return sets.map { s ->
             SetResponse(
-                id            = s.id,
-                code          = s.code,
-                series        = s.series,
-                releaseDate   = s.releaseDate,
-                totalCards    = s.totalCards,
-                localizations = locs[s.id]?.toMap() ?: emptyMap(),
+                id             = s.id,
+                code           = s.code,
+                series         = s.series,
+                releaseDate    = s.releaseDate,
+                mainSetCount   = s.mainSetCount,
+                masterSetCount = s.masterSetCount,
+                localizations  = locs[s.id]?.toMap() ?: emptyMap(),
             )
         }
     }
@@ -41,10 +41,9 @@ class SetQueryRepository(private val jdbc: JdbcTemplate) {
     fun findById(id: String): SetResponse? {
         val set = jdbc.query(
             """
-            SELECT s.id, s.code, s.series, s.release_date, c.total_cards
-            FROM "set" s
-            LEFT JOIN set_compendium c ON c.set_id = s.id
-            WHERE s.id = ?
+            SELECT id, code, series, release_date, main_set_count, master_set_count
+            FROM "set"
+            WHERE id = ?
             """.trimIndent(),
             { rs, _ -> rs.toSetRow() },
             id,
@@ -57,21 +56,23 @@ class SetQueryRepository(private val jdbc: JdbcTemplate) {
         ).toMap()
 
         return SetResponse(
-            id            = set.id,
-            code          = set.code,
-            series        = set.series,
-            releaseDate   = set.releaseDate,
-            totalCards    = set.totalCards,
-            localizations = locs,
+            id             = set.id,
+            code           = set.code,
+            series         = set.series,
+            releaseDate    = set.releaseDate,
+            mainSetCount   = set.mainSetCount,
+            masterSetCount = set.masterSetCount,
+            localizations  = locs,
         )
     }
 
     private fun ResultSet.toSetRow() = SetRow(
-        id          = getString("id"),
-        code        = getString("code"),
-        series      = getString("series"),
-        releaseDate = getObject("release_date", LocalDate::class.java),
-        totalCards  = getInt("total_cards").takeUnless { wasNull() },
+        id             = getString("id"),
+        code           = getString("code"),
+        series         = getString("series"),
+        releaseDate    = getObject("release_date", LocalDate::class.java),
+        mainSetCount   = getInt("main_set_count").takeUnless { wasNull() },
+        masterSetCount = getInt("master_set_count").takeUnless { wasNull() },
     )
 
     private data class SetRow(
@@ -79,6 +80,7 @@ class SetQueryRepository(private val jdbc: JdbcTemplate) {
         val code: String,
         val series: String?,
         val releaseDate: LocalDate?,
-        val totalCards: Int?,
+        val mainSetCount: Int?,
+        val masterSetCount: Int?,
     )
 }

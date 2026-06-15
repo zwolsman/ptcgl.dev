@@ -36,12 +36,14 @@ object SetManifestParser {
                 else -> null
             }
             SetRecord(
-                id          = code,
-                code        = code,
-                name        = code,   // placeholder; no name source in set-manifest yet
-                series      = details["SeriesId"]?.toString(),
-                releaseDate = oleDate?.let { oleToLocalDate(it) },
-                revision    = doc.revision,
+                id             = code,
+                code           = code,
+                name           = code,   // placeholder; display names are in Unity localisation bundles
+                series         = details["SeriesId"]?.toString(),
+                releaseDate    = oleDate?.let { oleToLocalDate(it) },
+                revision       = doc.revision,
+                mainSetCount   = (details["MainSetCount"] as? Number)?.toInt()?.takeIf { it > 0 },
+                masterSetCount = (details["MasterSetCount"] as? Number)?.toInt()?.takeIf { it > 0 },
             )
         }
     }

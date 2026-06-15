@@ -5,9 +5,7 @@ import com.zwolsman.ptcgl.mirror.harvester.db.AssetLedgerEntry
 import com.zwolsman.ptcgl.mirror.harvester.db.AssetLedgerRepository
 import com.zwolsman.ptcgl.mirror.harvester.db.CardRepository
 import com.zwolsman.ptcgl.mirror.harvester.db.ConfigRevisionRepository
-import com.zwolsman.ptcgl.mirror.harvester.db.SetCompendiumRepository
 import com.zwolsman.ptcgl.mirror.harvester.db.SetRepository
-import com.zwolsman.ptcgl.mirror.harvester.normalize.CompendiumParser
 import com.zwolsman.ptcgl.mirror.harvester.domain.SetRecord
 import com.zwolsman.ptcgl.mirror.harvester.download.AssetDecodeService
 import com.zwolsman.ptcgl.mirror.harvester.download.AssetDownloadService
@@ -38,7 +36,6 @@ class PlanService(
     private val revisionRepo: ConfigRevisionRepository,
     private val assetDownloadService: AssetDownloadService,
     private val assetDecodeService: AssetDecodeService,
-    private val compendiumRepo: SetCompendiumRepository,
 ) {
 
     /**
@@ -77,9 +74,6 @@ class PlanService(
             revisionRepo.save(setManifestId, setManifestDoc.revision)
             log.info("Sets upserted")
         }
-
-        // --- 2b. Compendium docs (set metadata: total cards, etc.) ---
-        fetchCompendiums(allSets.map { it.id })
 
         // --- 3. Card databases ---
         // Resolve which set codes to process
@@ -170,34 +164,6 @@ class PlanService(
         log.info("Phase C: unpacking bundles from S3…")
         val decoded = assetDecodeService.decodeAll()
         log.info("Phase C complete. {} bundles unpacked.", decoded)
-    }
-
-    private fun fetchCompendiums(setIds: List<String>) {
-        log.info("Fetching compendium docs for {} sets", setIds.size)
-        for (batch in setIds.chunked(20)) {
-            val docIds = batch.map { "${it}-compendium_0.0" }
-            try {
-                val docs = configClient.getMultiple(*docIds.toTypedArray())
-                for ((setId, doc) in batch.zip(docs)) {
-                    if (revisionRepo.isUpToDate(doc.id, doc.revision)) {
-                        log.debug("Compendium {} unchanged", doc.id)
-                        continue
-                    }
-                    val parsed = CompendiumParser.parse(doc)
-                    compendiumRepo.upsert(
-                        setId,
-                        SetCompendiumRepository.CompendiumRow(
-                            rawJson    = parsed.rawJson,
-                            totalCards = parsed.totalCards,
-                            revision   = doc.revision,
-                        ),
-                    )
-                    revisionRepo.save(doc.id, doc.revision)
-                }
-            } catch (e: Exception) {
-                log.warn("Compendium batch fetch failed for {}: {}", batch, e.message)
-            }
-        }
     }
 
     private fun processCardDatabase(docId: String, setCode: String, locale: String) {

@@ -16,14 +16,16 @@ class SetRepository(private val jdbc: JdbcTemplate) {
     fun upsertSets(sets: List<SetRecord>) {
         if (sets.isEmpty()) return
         val sql = """
-            INSERT INTO set (id, code, name, series, release_date, revision)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO "set" (id, code, name, series, release_date, revision, main_set_count, master_set_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (id) DO UPDATE SET
-                code         = EXCLUDED.code,
-                name         = EXCLUDED.name,
-                series       = EXCLUDED.series,
-                release_date = EXCLUDED.release_date,
-                revision     = EXCLUDED.revision
+                code            = EXCLUDED.code,
+                name            = EXCLUDED.name,
+                series          = EXCLUDED.series,
+                release_date    = EXCLUDED.release_date,
+                revision        = EXCLUDED.revision,
+                main_set_count  = EXCLUDED.main_set_count,
+                master_set_count = EXCLUDED.master_set_count
         """.trimIndent()
         jdbc.batchUpdate(sql, object : BatchPreparedStatementSetter {
             override fun setValues(ps: PreparedStatement, i: Int) {
@@ -34,6 +36,8 @@ class SetRepository(private val jdbc: JdbcTemplate) {
                 ps.setString(4, s.series)
                 if (s.releaseDate != null) ps.setObject(5, s.releaseDate) else ps.setNull(5, Types.DATE)
                 ps.setString(6, s.revision)
+                if (s.mainSetCount != null) ps.setInt(7, s.mainSetCount) else ps.setNull(7, Types.INTEGER)
+                if (s.masterSetCount != null) ps.setInt(8, s.masterSetCount) else ps.setNull(8, Types.INTEGER)
             }
             override fun getBatchSize() = sets.size
         })

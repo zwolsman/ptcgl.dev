@@ -14,7 +14,10 @@ data class SetResponse(
     val code: String,
     val series: String?,
     val releaseDate: LocalDate?,
-    val totalCards: Int?,
+    /** Numbered cards in the main expansion (null for promo/alt sets). */
+    val mainSetCount: Int?,
+    /** Full collectible set size including secret rares (null for promo/alt sets). */
+    val masterSetCount: Int?,
     /** locale → localized name */
     val localizations: Map<String, String>,
 )

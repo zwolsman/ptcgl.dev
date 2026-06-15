@@ -9,6 +9,8 @@ data class SetRecord(
     val series: String?,
     val releaseDate: LocalDate?,
     val revision: String,
+    val mainSetCount: Int?,   // MainSetCount from setDetails (numbered expansion cards)
+    val masterSetCount: Int?, // MasterSetCount from setDetails (full collectible set)
 )
 
 data class SetLocalizationRecord(
