@@ -62,6 +62,7 @@ class AssetDecodeService(
                             assetName    = asset.assetName,
                             locale       = asset.locale,
                             s3KeyDecoded = decodedPrefix,
+                            textureName  = result.primaryTextureName,
                         )
                         if (result.manifests.isNotEmpty()) {
                             assetRepo.upsertManifests(asset.assetName, result.manifests.map { m ->
@@ -101,6 +102,7 @@ class AssetDecodeService(
 
     private data class DecodeResult(
         val extractedCount: Int,
+        val primaryTextureName: String?,
         val manifests: List<ManifestData>,
     )
 
@@ -118,6 +120,7 @@ class AssetDecodeService(
         val cabFiles = bundleFiles.filter { !it.path.endsWith(".resS", ignoreCase = true) }
 
         var count = 0
+        var primaryTextureName: String? = null
         val manifests = mutableListOf<ManifestData>()
 
         for (cab in cabFiles) {
@@ -160,6 +163,7 @@ class AssetDecodeService(
                                     .build(),
                                 RequestBody.fromBytes(pngBytes),
                             )
+                            if (primaryTextureName == null) primaryTextureName = name
                             count++
                         }
 
@@ -197,7 +201,7 @@ class AssetDecodeService(
                 }
             }
         }
-        return DecodeResult(extractedCount = count, manifests = manifests)
+        return DecodeResult(extractedCount = count, primaryTextureName = primaryTextureName, manifests = manifests)
     }
 
     /** Coerces Int or Long TypeTree values to Int. */

@@ -40,21 +40,27 @@ class CardQueryRepository(
             ids, locale,
         ) { rs, _ -> rs.getString("card_id") to rs.getString("name") }.toMap()
 
-        val thumbAssets = queryByIds<Pair<String, String>>(
-            "SELECT asset_name, s3_key_decoded FROM asset_object WHERE asset_name = ANY(?) AND s3_key_decoded IS NOT NULL",
+        val thumbAssets = queryByIds<AssetRow>(
+            "SELECT asset_name, s3_key_decoded, texture_name FROM asset_object WHERE asset_name = ANY(?) AND s3_key_decoded IS NOT NULL",
             cards.map { (_, number, _) -> "${setId}_${locale}_${number}_t" },
-        ) { rs, _ -> rs.getString("asset_name") to rs.getString("s3_key_decoded") }.toMap()
+        ) { rs, _ ->
+            AssetRow(
+                assetName    = rs.getString("asset_name"),
+                s3KeyDecoded = rs.getString("s3_key_decoded"),
+                textureName  = rs.getString("texture_name"),
+            )
+        }.associateBy { it.assetName }
 
         return cards.map { (id, number, mainSetCount) ->
             val formatted = number.toIntOrNull()?.toString() ?: number
             val thumbAssetName = "${setId}_${locale}_${number}_t"
-            val thumbDecoded = thumbAssets[thumbAssetName]
+            val thumbAsset = thumbAssets[thumbAssetName]
             CardSummaryResponse(
                 id       = id,
                 number   = formatted,
                 position = mainSetCount?.let { "$formatted / $it" },
                 name     = names[id],
-                thumb    = thumbDecoded?.let { assetUrl(thumbAssetName, it) },
+                thumb    = thumbAsset?.let { assetUrl(thumbAssetName, it.s3KeyDecoded, it.textureName) },
             )
         }
     }
@@ -173,12 +179,13 @@ class CardQueryRepository(
         val allAssetNames = (thumbNames.keys + hiresNames.keys + siblingThumbAssetNames.values).distinct()
 
         val assetByName = queryByIds<AssetRow>(
-            "SELECT asset_name, s3_key_decoded FROM asset_object WHERE asset_name = ANY(?) AND s3_key_decoded IS NOT NULL",
+            "SELECT asset_name, s3_key_decoded, texture_name FROM asset_object WHERE asset_name = ANY(?) AND s3_key_decoded IS NOT NULL",
             allAssetNames,
         ) { rs, _ ->
             AssetRow(
                 assetName    = rs.getString("asset_name"),
                 s3KeyDecoded = rs.getString("s3_key_decoded"),
+                textureName  = rs.getString("texture_name"),
             )
         }.associateBy { it.assetName }
 
@@ -200,7 +207,7 @@ class CardQueryRepository(
 
         // Reverse-map sibling thumb asset names → their thumb URL
         val siblingThumbUrl: Map<String, String?> = siblingThumbAssetNames.mapValues { (_, thumbAssetName) ->
-            assetByName[thumbAssetName]?.let { assetUrl(thumbAssetName, it.s3KeyDecoded) }
+            assetByName[thumbAssetName]?.let { assetUrl(thumbAssetName, it.s3KeyDecoded, it.textureName) }
         }
 
         return cards.map { c ->
@@ -251,17 +258,17 @@ class CardQueryRepository(
                 assets = if (thumbOnly) {
                     CardAssets(
                         hires      = null,
-                        thumb      = thumbAsset?.let { assetUrl(thumbName, it.s3KeyDecoded) },
+                        thumb      = thumbAsset?.let { assetUrl(thumbName, it.s3KeyDecoded, it.textureName) },
                         whiteplate = null,
                         etch       = null,
                         foilType   = null,
                     )
                 } else {
                     CardAssets(
-                        hires      = hiresAsset?.let { assetUrl(hiresName, it.s3KeyDecoded) },
-                        thumb      = thumbAsset?.let { assetUrl(thumbName, it.s3KeyDecoded) },
-                        whiteplate = manifest?.whiteplateName?.let { hiresAsset?.let { a -> assetUrl(it, a.s3KeyDecoded) } },
-                        etch       = manifest?.etchName?.let { hiresAsset?.let { a -> assetUrl(it, a.s3KeyDecoded) } },
+                        hires      = hiresAsset?.let { assetUrl(hiresName, it.s3KeyDecoded, it.textureName) },
+                        thumb      = thumbAsset?.let { assetUrl(thumbName, it.s3KeyDecoded, it.textureName) },
+                        whiteplate = manifest?.whiteplateName?.let { wp -> hiresAsset?.let { a -> assetUrl(wp, a.s3KeyDecoded) } },
+                        etch       = manifest?.etchName?.let { e -> hiresAsset?.let { a -> assetUrl(e, a.s3KeyDecoded) } },
                         foilType   = manifest?.foilType?.let { camelToSpaced(it) },
                     )
                 },
@@ -269,8 +276,8 @@ class CardQueryRepository(
         }
     }
 
-    private fun assetUrl(assetName: String, s3KeyDecoded: String) =
-        "$assetBaseUrl/$s3KeyDecoded/$assetName.png"
+    private fun assetUrl(assetName: String, s3KeyDecoded: String, textureName: String? = null) =
+        "$assetBaseUrl/$s3KeyDecoded/${textureName ?: assetName}.png"
 
     private val camelSplit = Regex("[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
     private fun camelToSpaced(s: String) = camelSplit.findAll(s).joinToString(" ") { it.value }
@@ -359,6 +366,7 @@ class CardQueryRepository(
     private data class AssetRow(
         val assetName: String,
         val s3KeyDecoded: String,
+        val textureName: String?,
     )
 
     private data class ManifestRow(

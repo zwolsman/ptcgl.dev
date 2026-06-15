@@ -181,13 +181,14 @@ class AssetLedgerRepository(private val jdbc: JdbcTemplate) {
         }, *params)
     }
 
-    fun markDecoded(assetName: String, locale: String, s3KeyDecoded: String) {
+    fun markDecoded(assetName: String, locale: String, s3KeyDecoded: String, textureName: String? = null) {
         jdbc.update("""
             UPDATE asset_object
                SET s3_key_decoded = ?,
+                   texture_name   = ?,
                    updated_at     = now()
              WHERE asset_name = ? AND locale = ?
-        """.trimIndent(), s3KeyDecoded, assetName, locale)
+        """.trimIndent(), s3KeyDecoded, textureName, assetName, locale)
     }
 
     @Transactional
