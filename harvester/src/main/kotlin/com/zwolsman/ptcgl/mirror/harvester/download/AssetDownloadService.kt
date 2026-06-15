@@ -27,14 +27,14 @@ class AssetDownloadService(
      * @param batchSize number of assets to claim per iteration
      * @return total number of assets successfully uploaded
      */
-    fun downloadAll(batchSize: Int = 50): Int {
+    fun downloadAll(batchSize: Int = 50, setIds: List<String>? = null): Int {
         var total = 0
         var skipped = 0
         var failed = 0
         var batch = 0
 
         while (true) {
-            val claimed = assetRepo.claimPending(batchSize)
+            val claimed = assetRepo.claimPending(batchSize, setIds = setIds)
             if (claimed.isEmpty()) break
 
             batch++

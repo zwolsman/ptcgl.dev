@@ -171,14 +171,17 @@ class PlanService(
         log.info("Phase A ledger complete. {} desired assets in ledger.", desired.size)
 
         // --- 6. Download PENDING assets from CDN → S3 (always runs) ---
-        log.info("Phase B: downloading assets from CDN to S3…")
-        val downloaded = assetDownloadService.downloadAll()
-        log.info("Phase B complete. {} assets uploaded to S3.", downloaded)
+        val scopeFilter = if (setFilter != null || latestOnly) targetCodes else null
+        val pendingCount = assetRepo.countPending(scopeFilter)
+        log.info("Phase B: {} assets pending download from CDN to S3…", pendingCount)
+        val downloaded = assetDownloadService.downloadAll(setIds = scopeFilter)
+        log.info("Phase B complete. {} / {} assets uploaded to S3.", downloaded, pendingCount)
 
         // --- 7. Decode raw bundles → extract internal files (always runs) ---
-        log.info("Phase C: unpacking bundles from S3…")
-        val decoded = assetDecodeService.decodeAll()
-        log.info("Phase C complete. {} bundles unpacked.", decoded)
+        val undecoded = assetRepo.countDoneWithoutDecoded(scopeFilter)
+        log.info("Phase C: {} bundles pending unpack from S3…", undecoded)
+        val decoded = assetDecodeService.decodeAll(setIds = scopeFilter)
+        log.info("Phase C complete. {} / {} bundles unpacked.", decoded, undecoded)
     }
 
     private fun processCardDatabase(docId: String, setCode: String, locale: String) {

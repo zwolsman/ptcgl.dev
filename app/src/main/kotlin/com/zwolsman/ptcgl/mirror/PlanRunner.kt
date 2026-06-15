@@ -16,10 +16,11 @@ private val log = LoggerFactory.getLogger(PlanRunner::class.java)
  *   --plan              required to activate
  *   --latest            process only the set with the most recent release date
  *   --set=<code>        process only the named set (e.g. --set=sv8)
+ *   --locale=<code>     locale to use (default: en)
  *
  * Example:
  *   SPRING_PROFILES_ACTIVE=local RAINIER_PTCS_TOKEN=<token> \
- *     ./gradlew :app:bootRun --args='--plan --latest'
+ *     ./gradlew :app:bootRun --args='--plan --latest --locale=fr'
  */
 @Component
 @Order(10)
@@ -30,9 +31,10 @@ class PlanRunner(private val planService: PlanService) : ApplicationRunner {
 
         val setFilter = args.getOptionValues("set")?.firstOrNull()
         val latestOnly = args.containsOption("latest")
+        val locale = args.getOptionValues("locale")?.firstOrNull() ?: "en"
 
-        log.info("Starting Phase A plan… (setFilter={}, latestOnly={})", setFilter, latestOnly)
-        planService.run(locale = "en", setFilter = setFilter, latestOnly = latestOnly)
+        log.info("Starting Phase A plan… (locale={}, setFilter={}, latestOnly={})", locale, setFilter, latestOnly)
+        planService.run(locale = locale, setFilter = setFilter, latestOnly = latestOnly)
         log.info("Phase A plan complete.")
     }
 }
