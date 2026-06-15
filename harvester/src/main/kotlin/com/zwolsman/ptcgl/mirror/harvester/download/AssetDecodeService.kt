@@ -54,13 +54,20 @@ class AssetDecodeService(
                     val bundleFiles = UnityBundle.parse(rawBytes)
 
                     val decodedPrefix = "decoded/${asset.s3KeyRaw}"
-                    val extractedCount = extractAndUpload(bundleFiles, decodedPrefix)
+                    val result = extractAndUpload(bundleFiles, decodedPrefix)
 
-                    if (extractedCount > 0) {
-                        assetRepo.markDecoded(asset.assetName, asset.locale, decodedPrefix)
+                    if (result.textureCount > 0) {
+                        assetRepo.markDecoded(
+                            assetName      = asset.assetName,
+                            locale         = asset.locale,
+                            s3KeyDecoded   = decodedPrefix,
+                            whiteplateName = result.whiteplateName,
+                            etchName       = result.etchName,
+                        )
                         total++
                     } else {
                         log.warn("No Texture2D extracted from {}", asset.s3KeyRaw)
+
                         failed++
                     }
                 } catch (e: Exception) {
@@ -74,13 +81,17 @@ class AssetDecodeService(
         return total
     }
 
+    private data class DecodeResult(
+        val textureCount: Int,
+        val whiteplateName: String?,
+        val etchName: String?,
+    )
+
     /**
      * Splits bundle files into .resS (external texture data) and CAB (SerializedFiles),
-     * then extracts all Texture2D objects and uploads them.
-     *
-     * Returns the number of textures uploaded.
+     * then extracts all Texture2D objects and MonoBehaviours (e.g. MaterialManifest) and uploads them.
      */
-    private fun extractAndUpload(bundleFiles: List<BundleFile>, decodedPrefix: String): Int {
+    private fun extractAndUpload(bundleFiles: List<BundleFile>, decodedPrefix: String): DecodeResult {
         // .resS files hold external texture data referenced by offset+size from a CAB
         val resSByName: Map<String, ByteArray> = bundleFiles
             .filter { it.path.endsWith(".resS", ignoreCase = true) }
@@ -90,6 +101,9 @@ class AssetDecodeService(
         val cabFiles = bundleFiles.filter { !it.path.endsWith(".resS", ignoreCase = true) }
 
         var count = 0
+        var whiteplateName: String? = null
+        var etchName: String? = null
+
         for (cab in cabFiles) {
             val sf = try {
                 SerializedFileParser.parse(cab.data)
@@ -137,6 +151,11 @@ class AssetDecodeService(
                             val objData = TypeTreeReader.read(sf, obj)
                             val name = (objData["m_Name"] as? String)?.takeIf { it.isNotBlank() } ?: continue
 
+                            if (name == "MaterialManifest") {
+                                whiteplateName = (objData["_w"] as? String)?.takeIf { it.isNotBlank() }
+                                etchName       = (objData["_e"] as? String)?.takeIf { it.isNotBlank() }
+                            }
+
                             val json = mapper.writeValueAsBytes(objData)
                             val key = "$decodedPrefix/$name.json"
                             s3.putObject(
@@ -155,7 +174,7 @@ class AssetDecodeService(
                 }
             }
         }
-        return count
+        return DecodeResult(textureCount = count, whiteplateName = whiteplateName, etchName = etchName)
     }
 
     /** Coerces Int or Long TypeTree values to Int. */

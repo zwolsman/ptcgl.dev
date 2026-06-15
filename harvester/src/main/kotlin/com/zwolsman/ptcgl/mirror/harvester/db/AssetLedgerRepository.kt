@@ -135,12 +135,21 @@ class AssetLedgerRepository(private val jdbc: JdbcTemplate) {
             )
         }, limit)
 
-    fun markDecoded(assetName: String, locale: String, s3KeyDecoded: String) {
+    fun markDecoded(
+        assetName: String,
+        locale: String,
+        s3KeyDecoded: String,
+        whiteplateName: String? = null,
+        etchName: String? = null,
+    ) {
         jdbc.update("""
             UPDATE asset_object
-               SET s3_key_decoded = ?, updated_at = now()
+               SET s3_key_decoded  = ?,
+                   whiteplate_name = ?,
+                   etch_name       = ?,
+                   updated_at      = now()
              WHERE asset_name = ? AND locale = ?
-        """.trimIndent(), s3KeyDecoded, assetName, locale)
+        """.trimIndent(), s3KeyDecoded, whiteplateName, etchName, assetName, locale)
     }
 
     fun markFailed(assetName: String, locale: String, error: String) {

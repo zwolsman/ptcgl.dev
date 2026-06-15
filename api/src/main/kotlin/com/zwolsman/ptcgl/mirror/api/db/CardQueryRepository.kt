@@ -3,6 +3,7 @@ package com.zwolsman.ptcgl.mirror.api.db
 import com.zwolsman.ptcgl.mirror.api.model.AttackResponse
 import com.zwolsman.ptcgl.mirror.api.model.CardAssets
 import com.zwolsman.ptcgl.mirror.api.model.CardResponse
+import com.zwolsman.ptcgl.mirror.api.model.OtherPrint
 import com.zwolsman.ptcgl.mirror.api.model.Resistance
 import com.zwolsman.ptcgl.mirror.api.model.Weakness
 import org.springframework.beans.factory.annotation.Value
@@ -30,7 +31,7 @@ class CardQueryRepository(
             { rs, _ -> rs.toCardRow() },
             setId,
         )
-        return enrichCards(cards, locale)
+        return enrichCards(cards, locale, thumbOnly = true)
     }
 
     fun findById(id: String, locale: String): CardResponse? {
@@ -45,10 +46,10 @@ class CardQueryRepository(
             { rs, _ -> rs.toCardRow() },
             id,
         ).firstOrNull() ?: return null
-        return enrichCards(listOf(card), locale).firstOrNull()
+        return enrichCards(listOf(card), locale, thumbOnly = false).firstOrNull()
     }
 
-    private fun enrichCards(cards: List<CardRow>, locale: String): List<CardResponse> {
+    private fun enrichCards(cards: List<CardRow>, locale: String, thumbOnly: Boolean): List<CardResponse> {
         if (cards.isEmpty()) return emptyList()
         val ids = cards.map { it.id }
 
@@ -97,33 +98,71 @@ class CardQueryRepository(
             }.groupBy { it.archetype }
         }
 
-        // Asset names embed the locale: {setId}_{locale}_{number}[_t]
-        val hiresNames = cards.associate { "${it.setId}_${locale}_${it.number}" to it.id }
-        val thumbNames = cards.associate { "${it.setId}_${locale}_${it.number}_t" to it.id }
-        val allAssetNames = (hiresNames.keys + thumbNames.keys).toList()
+        // Collect all asset names we need: thumb for everyone; hires+manifest for detail
+        val thumbNames  = cards.associate { "${it.setId}_${locale}_${it.number}_t" to it.id }
+        val hiresNames  = if (thumbOnly) emptyMap() else cards.associate { "${it.setId}_${locale}_${it.number}" to it.id }
+
+        // Gather otherPrint sibling IDs across all cards for a bulk thumb lookup
+        val otherPrintSiblingIds: List<String> = archetypeRows.values.flatten()
+            .filter { row -> row.id.substringAfterLast('_').all(Char::isDigit) }
+            .map { it.id }
+            .distinct()
+
+        val siblingThumbNames: Map<String, String> = otherPrintSiblingIds
+            .associateWith { siblingId ->
+                val c = archetypeRows.values.flatten().firstOrNull { it.id == siblingId } ?: return@associateWith ""
+                // We need the sibling's set_id + number to construct its thumb name, but we only have id
+                // Derive: thumb asset = {setId}_{locale}_{number}_t — we need to query the card table
+                ""
+            }
+            .filterValues { it.isNotEmpty() }
+
+        // Bulk-query sibling card details (set_id, number) to build their thumb asset names
+        val siblingCardDetails: Map<String, Pair<String, String>> = if (otherPrintSiblingIds.isEmpty()) emptyMap() else {
+            queryByIds<Triple<String, String, String>>(
+                "SELECT id, set_id, number FROM card WHERE id = ANY(?)",
+                otherPrintSiblingIds,
+            ) { rs, _ -> Triple(rs.getString("id"), rs.getString("set_id"), rs.getString("number")) }
+                .associate { (id, setId, number) -> id to (setId to number) }
+        }
+
+        val siblingThumbAssetNames: Map<String, String> = siblingCardDetails
+            .mapValues { (_, details) -> "${details.first}_${locale}_${details.second}_t" }
+
+        val allAssetNames = (thumbNames.keys + hiresNames.keys + siblingThumbAssetNames.values).distinct()
 
         val assetByName = queryByIds<AssetRow>(
-            "SELECT asset_name, s3_key_decoded FROM asset_object WHERE asset_name = ANY(?) AND s3_key_decoded IS NOT NULL",
+            "SELECT asset_name, s3_key_decoded, whiteplate_name, etch_name FROM asset_object WHERE asset_name = ANY(?) AND s3_key_decoded IS NOT NULL",
             allAssetNames,
         ) { rs, _ ->
             AssetRow(
-                assetName    = rs.getString("asset_name"),
-                s3KeyDecoded = rs.getString("s3_key_decoded"),
+                assetName      = rs.getString("asset_name"),
+                s3KeyDecoded   = rs.getString("s3_key_decoded"),
+                whiteplateName = rs.getString("whiteplate_name"),
+                etchName       = rs.getString("etch_name"),
             )
         }.associateBy { it.assetName }
 
+        // Reverse-map sibling thumb asset names → their thumb URL
+        val siblingThumbUrl: Map<String, String?> = siblingThumbAssetNames.mapValues { (_, thumbAssetName) ->
+            assetByName[thumbAssetName]?.let { assetUrl(thumbAssetName, it.s3KeyDecoded) }
+        }
+
         return cards.map { c ->
             val formattedNumber = c.number.toIntOrNull()?.toString() ?: c.number
-            val position = c.mainSetCount?.let { "$formattedNumber / $it" }
-            val hiresName = "${c.setId}_${locale}_${c.number}"
-            val thumbName = "${c.setId}_${locale}_${c.number}_t"
+            val position   = c.mainSetCount?.let { "$formattedNumber / $it" }
+            val thumbName  = "${c.setId}_${locale}_${c.number}_t"
+            val hiresName  = "${c.setId}_${locale}_${c.number}"
+            val hiresAsset = assetByName[hiresName]
+            val thumbAsset = assetByName[thumbName]
+
             val siblings = c.archetype?.let { archetypeRows[it] } ?: emptyList()
             val variants = siblings
                 .filter { it.setId == c.setId && it.number == c.number && it.id != c.id }
                 .map { it.id }
             val otherPrints = siblings
                 .filter { (it.setId != c.setId || it.number != c.number) && it.id != c.id && it.id.substringAfterLast('_').all(Char::isDigit) }
-                .map { it.id }
+                .map { sibling -> OtherPrint(id = sibling.id, thumb = siblingThumbUrl[sibling.id]) }
 
             CardResponse(
                 id             = c.id,
@@ -152,10 +191,21 @@ class CardQueryRepository(
                         text   = a.text,
                     )
                 },
-                assets = CardAssets(
-                    hires = assetByName[hiresName]?.let { assetUrl(hiresName, it.s3KeyDecoded) },
-                    thumb = assetByName[thumbName]?.let { assetUrl(thumbName, it.s3KeyDecoded) },
-                ),
+                assets = if (thumbOnly) {
+                    CardAssets(
+                        hires      = null,
+                        thumb      = thumbAsset?.let { assetUrl(thumbName, it.s3KeyDecoded) },
+                        whiteplate = null,
+                        etch       = null,
+                    )
+                } else {
+                    CardAssets(
+                        hires      = hiresAsset?.let { assetUrl(hiresName, it.s3KeyDecoded) },
+                        thumb      = thumbAsset?.let { assetUrl(thumbName, it.s3KeyDecoded) },
+                        whiteplate = hiresAsset?.whiteplateName?.let { assetUrl(it, hiresAsset.s3KeyDecoded) },
+                        etch       = hiresAsset?.etchName?.let { assetUrl(it, hiresAsset.s3KeyDecoded) },
+                    )
+                },
             )
         }
     }
@@ -195,10 +245,6 @@ class CardQueryRepository(
         return if (wasNull()) null else v
     }
 
-    /**
-     * Variant for queries with an extra scalar parameter before the array (e.g. locale).
-     * The array placeholder must be the LAST parameter in the SQL.
-     */
     private fun <T> queryByIds(sql: String, ids: List<String>, scalarParam: String, mapper: (ResultSet, Int) -> T): List<T> {
         if (ids.isEmpty()) return emptyList()
         return jdbc.execute(ConnectionCallback { conn ->
@@ -248,5 +294,10 @@ class CardQueryRepository(
 
     private data class ArchetypeRow(val archetype: String, val id: String, val setId: String, val number: String)
 
-    private data class AssetRow(val assetName: String, val s3KeyDecoded: String)
+    private data class AssetRow(
+        val assetName: String,
+        val s3KeyDecoded: String,
+        val whiteplateName: String?,
+        val etchName: String?,
+    )
 }

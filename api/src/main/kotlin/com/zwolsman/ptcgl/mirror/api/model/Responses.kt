@@ -51,10 +51,12 @@ data class CardResponse(
     /** Same card, different holo treatment (same set + number, different ID suffix like _ph). */
     val variants: List<String>,
     /** Same card printed in a different set or as an alt art (different set or different number). */
-    val otherPrints: List<String>,
+    val otherPrints: List<OtherPrint>,
     val attacks: List<AttackResponse>,
     val assets: CardAssets,
 )
+
+data class OtherPrint(val id: String, val thumb: String?)
 
 data class Weakness(val type: String, val amount: String)
 
@@ -71,4 +73,6 @@ data class AttackResponse(
 data class CardAssets(
     val hires: String?,
     val thumb: String?,
+    val whiteplate: String?,
+    val etch: String?,
 )
