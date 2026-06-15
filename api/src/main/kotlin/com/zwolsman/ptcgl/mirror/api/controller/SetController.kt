@@ -20,11 +20,15 @@ class SetController(
 ) {
 
     @GetMapping
-    fun listSets(): List<SetResponse> = setRepo.findAll()
+    fun listSets(
+        @RequestParam(defaultValue = "en") locale: String,
+    ): List<SetResponse> = setRepo.findAll(locale)
 
     @GetMapping("/{id}")
-    fun getSet(@PathVariable id: String): SetResponse =
-        setRepo.findById(id) ?: throw ResponseStatusException(HttpStatus.NOT_FOUND)
+    fun getSet(
+        @PathVariable id: String,
+        @RequestParam(defaultValue = "en") locale: String,
+    ): SetResponse = setRepo.findById(id, locale) ?: throw ResponseStatusException(HttpStatus.NOT_FOUND)
 
     @GetMapping("/{id}/cards")
     fun getCards(

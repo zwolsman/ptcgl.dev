@@ -5,8 +5,10 @@ import com.zwolsman.ptcgl.mirror.harvester.db.AssetLedgerEntry
 import com.zwolsman.ptcgl.mirror.harvester.db.AssetLedgerRepository
 import com.zwolsman.ptcgl.mirror.harvester.db.CardRepository
 import com.zwolsman.ptcgl.mirror.harvester.db.ConfigRevisionRepository
+import com.zwolsman.ptcgl.mirror.harvester.db.RarityRepository
 import com.zwolsman.ptcgl.mirror.harvester.db.SetRepository
 import com.zwolsman.ptcgl.mirror.harvester.domain.SetRecord
+import com.zwolsman.ptcgl.mirror.harvester.normalize.RarityManifestParser
 import com.zwolsman.ptcgl.mirror.harvester.download.AssetDecodeService
 import com.zwolsman.ptcgl.mirror.harvester.download.AssetDownloadService
 import com.zwolsman.ptcgl.mirror.harvester.normalize.CardDbNormalizer
@@ -36,6 +38,7 @@ class PlanService(
     private val revisionRepo: ConfigRevisionRepository,
     private val assetDownloadService: AssetDownloadService,
     private val assetDecodeService: AssetDecodeService,
+    private val rarityRepo: RarityRepository,
 ) {
 
     /**
@@ -48,13 +51,13 @@ class PlanService(
 
         val setManifestId     = "set-manifest_0.0"
         val bundleManifestId  = "asset-bundle-manifest_0.0"
-
         val cardDbManifestId  = "card-databases-manifest_0.0"
+        val rarityManifestId  = "rarity-manifest_0.0"
 
         // --- 1. Fetch control-plane docs (always fetch to get revisions) ---
-        log.info("Fetching config docs: {}, {}, {}", setManifestId, bundleManifestId, cardDbManifestId)
-        val (setManifestDoc, bundleManifestDoc, cardDbManifestDoc) =
-            configClient.getMultiple(setManifestId, bundleManifestId, cardDbManifestId)
+        log.info("Fetching config docs: {}, {}, {}, {}", setManifestId, bundleManifestId, cardDbManifestId, rarityManifestId)
+        val (setManifestDoc, bundleManifestDoc, cardDbManifestDoc, rarityManifestDoc) =
+            configClient.getMultiple(setManifestId, bundleManifestId, cardDbManifestId, rarityManifestId)
 
         // --- 2. Sets (skip if unchanged) ---
         val allSets: List<SetRecord>
@@ -73,6 +76,18 @@ class PlanService(
             }
             revisionRepo.save(setManifestId, setManifestDoc.revision)
             log.info("Sets upserted")
+        }
+
+        // --- 2b. Rarities (skip if unchanged) ---
+        if (revisionRepo.isUpToDate(rarityManifestId, rarityManifestDoc.revision)) {
+            log.info("rarity-manifest unchanged (rev={}), skipping rarity upsert", rarityManifestDoc.revision)
+        } else {
+            log.info("Processing rarity-manifest (rev={})", rarityManifestDoc.revision)
+            val rarities = RarityManifestParser.parse(rarityManifestDoc)
+            log.info("Found {} rarities", rarities.size)
+            rarityRepo.upsert(rarities)
+            revisionRepo.save(rarityManifestId, rarityManifestDoc.revision)
+            log.info("Rarities upserted")
         }
 
         // --- 3. Card databases ---

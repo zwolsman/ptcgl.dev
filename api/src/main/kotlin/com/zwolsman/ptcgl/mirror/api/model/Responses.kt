@@ -14,31 +14,30 @@ data class SetResponse(
     val code: String,
     val series: String?,
     val releaseDate: LocalDate?,
+    val name: String?,
     /** Numbered cards in the main expansion (null for promo/alt sets). */
     val mainSetCount: Int?,
     /** Full collectible set size including secret rares (null for promo/alt sets). */
     val masterSetCount: Int?,
-    /** locale → localized name */
-    val localizations: Map<String, String>,
 )
 
 data class CardResponse(
     val id: String,
     val setId: String,
     val number: String,
+    val position: String?,
+    val name: String?,
     /** POKEMON | TRAINER | ENERGY */
     val category: String?,
     val rarity: String?,
     val regulationMark: String?,
-    val archetype: String?,
     val hp: Int?,
     val types: List<String>,
     val evolvesFrom: String?,
     val retreat: Int?,
     val weakness: Weakness?,
     val resistance: Resistance?,
-    /** locale → localized name */
-    val localizations: Map<String, String>,
+    val otherPrints: List<String>,
     val attacks: List<AttackResponse>,
     val assets: CardAssets,
 )
@@ -49,13 +48,11 @@ data class Resistance(val type: String, val amount: String)
 
 data class AttackResponse(
     val slot: Int,
+    val name: String?,
     val cost: String?,
     val damage: String?,
-    /** locale → name + rules text */
-    val localizations: Map<String, AttackLocalization>,
+    val text: String?,
 )
-
-data class AttackLocalization(val name: String, val text: String?)
 
 data class CardAssets(
     val hires: String?,

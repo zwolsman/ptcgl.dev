@@ -9,78 +9,64 @@ import java.time.LocalDate
 @Repository
 class SetQueryRepository(private val jdbc: JdbcTemplate) {
 
-    fun findAll(): List<SetResponse> {
-        val sets = jdbc.query(
+    fun findAll(locale: String = "en"): List<SetResponse> {
+        return jdbc.query(
             """
-            SELECT id, code, series, release_date, main_set_count, master_set_count
-            FROM "set"
-            ORDER BY release_date DESC NULLS LAST
-            """.trimIndent()
-        ) { rs, _ -> rs.toSetRow() }
-        if (sets.isEmpty()) return emptyList()
-
-        val locs = jdbc.query(
-            "SELECT set_id, locale, name FROM set_localization"
-        ) { rs, _ ->
-            Triple(rs.getString("set_id"), rs.getString("locale"), rs.getString("name"))
-        }.groupBy({ it.first }, { it.second to it.third })
-
-        return sets.map { s ->
-            SetResponse(
-                id             = s.id,
-                code           = s.code,
-                series         = s.series,
-                releaseDate    = s.releaseDate,
-                mainSetCount   = s.mainSetCount,
-                masterSetCount = s.masterSetCount,
-                localizations  = locs[s.id]?.toMap() ?: emptyMap(),
-            )
-        }
-    }
-
-    fun findById(id: String): SetResponse? {
-        val set = jdbc.query(
-            """
-            SELECT id, code, series, release_date, main_set_count, master_set_count
-            FROM "set"
-            WHERE id = ?
+            SELECT s.id, s.code, s.series, s.release_date, s.main_set_count, s.master_set_count,
+                   sl.name
+            FROM "set" s
+            LEFT JOIN set_localization sl ON sl.set_id = s.id AND sl.locale = ?
+            ORDER BY s.release_date DESC NULLS LAST
             """.trimIndent(),
-            { rs, _ -> rs.toSetRow() },
-            id,
-        ).firstOrNull() ?: return null
-
-        val locs = jdbc.query(
-            "SELECT locale, name FROM set_localization WHERE set_id = ?",
-            { rs, _ -> rs.getString("locale") to rs.getString("name") },
-            id,
-        ).toMap()
-
-        return SetResponse(
-            id             = set.id,
-            code           = set.code,
-            series         = set.series,
-            releaseDate    = set.releaseDate,
-            mainSetCount   = set.mainSetCount,
-            masterSetCount = set.masterSetCount,
-            localizations  = locs,
+            { rs, _ -> rs.toSetResponse() },
+            locale,
         )
     }
 
-    private fun ResultSet.toSetRow() = SetRow(
+    fun findById(id: String, locale: String = "en"): SetResponse? {
+        return jdbc.query(
+            """
+            SELECT s.id, s.code, s.series, s.release_date, s.main_set_count, s.master_set_count,
+                   sl.name
+            FROM "set" s
+            LEFT JOIN set_localization sl ON sl.set_id = s.id AND sl.locale = ?
+            WHERE s.id = ?
+            """.trimIndent(),
+            { rs, _ -> rs.toSetResponse() },
+            locale,
+            id,
+        ).firstOrNull()
+    }
+
+    fun findAllSeries(): List<String> {
+        return jdbc.query(
+            """SELECT DISTINCT series FROM "set" WHERE series IS NOT NULL ORDER BY series""",
+        ) { rs, _ -> rs.getString("series") }
+    }
+
+    fun findBySeries(series: String, locale: String = "en"): List<SetResponse> {
+        return jdbc.query(
+            """
+            SELECT s.id, s.code, s.series, s.release_date, s.main_set_count, s.master_set_count,
+                   sl.name
+            FROM "set" s
+            LEFT JOIN set_localization sl ON sl.set_id = s.id AND sl.locale = ?
+            WHERE s.series = ?
+            ORDER BY s.release_date DESC NULLS LAST
+            """.trimIndent(),
+            { rs, _ -> rs.toSetResponse() },
+            locale,
+            series,
+        )
+    }
+
+    private fun ResultSet.toSetResponse() = SetResponse(
         id             = getString("id"),
         code           = getString("code"),
         series         = getString("series"),
         releaseDate    = getObject("release_date", LocalDate::class.java),
+        name           = getString("name"),
         mainSetCount   = getInt("main_set_count").takeUnless { wasNull() },
         masterSetCount = getInt("master_set_count").takeUnless { wasNull() },
-    )
-
-    private data class SetRow(
-        val id: String,
-        val code: String,
-        val series: String?,
-        val releaseDate: LocalDate?,
-        val mainSetCount: Int?,
-        val masterSetCount: Int?,
     )
 }
