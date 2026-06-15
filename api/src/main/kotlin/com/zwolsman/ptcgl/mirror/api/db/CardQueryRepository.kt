@@ -24,7 +24,7 @@ class CardQueryRepository(
             FROM card c
             LEFT JOIN "set" s ON s.id = c.set_id
             LEFT JOIN rarity r ON r.code = c.rarity
-            WHERE c.set_id = ?
+            WHERE c.set_id = ? AND c.id ~ '_[0-9]+$'
             ORDER BY c.number
             """.trimIndent(),
             { rs, _ -> rs.toCardRow() },
