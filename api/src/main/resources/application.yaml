@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: ptcgl-mirror-api
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/ptcgl_mirror}
+    username: ${SPRING_DATASOURCE_USERNAME:ptcgl}
+    password: ${SPRING_DATASOURCE_PASSWORD:ptcgl}
+  flyway:
+    enabled: false   # schema migrations are run only by the CronJob app
+  jackson:
+    default-property-inclusion: non_null
+
+mirror:
+  api:
+    asset-base-url: ${MIRROR_API_ASSET_BASE_URL:http://localhost:9000/ptcgl-mirror}
+
+server:
+  port: 8080

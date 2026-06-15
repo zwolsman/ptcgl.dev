@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+  namespace: ptcgl-mirror
+data:
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ptcgl_mirror
+  # Public base URL for asset images: {MIRROR_API_ASSET_BASE_URL}/{s3KeyDecoded}/{assetName}.png
+  # For Rustfs/Minio with path-style: http://<host>:9000/ptcgl-mirror
+  # For AWS S3: https://ptcgl-mirror.s3.amazonaws.com
+  MIRROR_API_ASSET_BASE_URL: https://changeme.example.com/ptcgl-mirror

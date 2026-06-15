@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ptcgl-mirror-api
+  namespace: ptcgl-mirror
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ptcgl-mirror-api
+  template:
+    metadata:
+      labels:
+        app: ptcgl-mirror-api
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/zwolsman/ptcgl-mirror-api:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: api-config
+            - secretRef:
+                name: api-credentials
+          readinessProbe:
+            httpGet:
+              path: /v1/sets
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
