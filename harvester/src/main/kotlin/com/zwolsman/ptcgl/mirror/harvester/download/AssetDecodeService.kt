@@ -175,8 +175,8 @@ class AssetDecodeService(
                             if (name.startsWith("MaterialManifest")) {
                                 // suffix: "" for standard, "ph" for MaterialManifest_ph, etc.
                                 val suffix = name.removePrefix("MaterialManifest").removePrefix("_")
-                                if (suffix.isEmpty()) {
-                                    // _c on the base manifest names the card's hires texture
+                                // _c names the card's hires texture; same value across all variant manifests
+                                if (hiresFromManifest == null) {
                                     hiresFromManifest = (objData["_c"] as? String)?.takeIf { it.isNotBlank() }
                                 }
                                 manifests += ManifestData(
