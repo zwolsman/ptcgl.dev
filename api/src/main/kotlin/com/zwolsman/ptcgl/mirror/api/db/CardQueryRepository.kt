@@ -81,14 +81,20 @@ class CardQueryRepository(
             )
         }.groupBy { it.cardId }
 
-        // otherPrints: cards sharing the same non-null archetype, excluding self
+        // variants + otherPrints: all cards sharing the same non-null archetype
         val archetypes = cards.mapNotNull { it.archetype }.distinct()
-        val otherPrintsByArchetype: Map<String, List<String>> = if (archetypes.isEmpty()) emptyMap() else {
-            queryByIds<Pair<String, String>>(
-                "SELECT archetype, id FROM card WHERE archetype = ANY(?) ORDER BY id",
+        val archetypeRows: Map<String, List<ArchetypeRow>> = if (archetypes.isEmpty()) emptyMap() else {
+            queryByIds<ArchetypeRow>(
+                "SELECT archetype, id, set_id, number FROM card WHERE archetype = ANY(?) ORDER BY id",
                 archetypes,
-            ) { rs, _ -> rs.getString("archetype") to rs.getString("id") }
-                .groupBy({ it.first }, { it.second })
+            ) { rs, _ ->
+                ArchetypeRow(
+                    archetype = rs.getString("archetype"),
+                    id        = rs.getString("id"),
+                    setId     = rs.getString("set_id"),
+                    number    = rs.getString("number"),
+                )
+            }.groupBy { it.archetype }
         }
 
         // Asset names embed the locale: {setId}_{locale}_{number}[_t]
@@ -111,8 +117,13 @@ class CardQueryRepository(
             val position = c.mainSetCount?.let { "$formattedNumber / $it" }
             val hiresName = "${c.setId}_${locale}_${c.number}"
             val thumbName = "${c.setId}_${locale}_${c.number}_t"
-            val prints = c.archetype?.let { otherPrintsByArchetype[it] }
-                ?.filter { it != c.id } ?: emptyList()
+            val siblings = c.archetype?.let { archetypeRows[it] } ?: emptyList()
+            val variants = siblings
+                .filter { it.setId == c.setId && it.number == c.number && it.id != c.id }
+                .map { it.id }
+            val otherPrints = siblings
+                .filter { (it.setId != c.setId || it.number != c.number) && it.id != c.id }
+                .map { it.id }
 
             CardResponse(
                 id             = c.id,
@@ -130,7 +141,8 @@ class CardQueryRepository(
                 retreat        = c.retreat,
                 weakness       = c.weaknessType?.let { Weakness(it, c.weaknessAmount ?: "") },
                 resistance     = c.resistanceType?.let { Resistance(it, c.resistanceAmount ?: "") },
-                otherPrints    = prints,
+                variants       = variants,
+                otherPrints    = otherPrints,
                 attacks        = (attacks[c.id] ?: emptyList()).map { a ->
                     AttackResponse(
                         slot   = a.slot,
@@ -233,6 +245,8 @@ class CardQueryRepository(
         val cardId: String, val slot: Int,
         val name: String?, val cost: String?, val damage: String?, val text: String?,
     )
+
+    private data class ArchetypeRow(val archetype: String, val id: String, val setId: String, val number: String)
 
     private data class AssetRow(val assetName: String, val s3KeyDecoded: String)
 }
