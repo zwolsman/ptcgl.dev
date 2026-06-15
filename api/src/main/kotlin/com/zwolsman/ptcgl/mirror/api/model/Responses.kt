@@ -9,12 +9,22 @@ data class ApiStatus(
     val lastSync: Instant?,
 )
 
+data class SeriesResponse(
+    val id: String,
+    val setCount: Int,
+)
+
+data class SeriesDetailResponse(
+    val id: String,
+    val sets: List<SetResponse>,
+)
+
 data class SetResponse(
     val id: String,
-    val code: String,
     val series: String?,
-    val releaseDate: LocalDate?,
+    val code: String,
     val name: String?,
+    val releaseDate: LocalDate?,
     /** Numbered cards in the main expansion (null for promo/alt sets). */
     val mainSetCount: Int?,
     /** Full collectible set size including secret rares (null for promo/alt sets). */
@@ -24,6 +34,7 @@ data class SetResponse(
 data class CardResponse(
     val id: String,
     val setId: String,
+    val series: String?,
     val number: String,
     val position: String?,
     val name: String?,

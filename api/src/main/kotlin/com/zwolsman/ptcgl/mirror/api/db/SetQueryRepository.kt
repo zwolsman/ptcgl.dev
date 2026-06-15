@@ -1,5 +1,6 @@
 package com.zwolsman.ptcgl.mirror.api.db
 
+import com.zwolsman.ptcgl.mirror.api.model.SeriesResponse
 import com.zwolsman.ptcgl.mirror.api.model.SetResponse
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
@@ -8,6 +9,18 @@ import java.time.LocalDate
 
 @Repository
 class SetQueryRepository(private val jdbc: JdbcTemplate) {
+
+    fun findAllSeries(): List<SeriesResponse> {
+        return jdbc.query(
+            """
+            SELECT series, COUNT(*) AS set_count
+            FROM "set"
+            WHERE series IS NOT NULL
+            GROUP BY series
+            ORDER BY series
+            """.trimIndent(),
+        ) { rs, _ -> SeriesResponse(rs.getString("series"), rs.getInt("set_count")) }
+    }
 
     fun findAll(locale: String = "en"): List<SetResponse> {
         return jdbc.query(
@@ -38,12 +51,6 @@ class SetQueryRepository(private val jdbc: JdbcTemplate) {
         ).firstOrNull()
     }
 
-    fun findAllSeries(): List<String> {
-        return jdbc.query(
-            """SELECT DISTINCT series FROM "set" WHERE series IS NOT NULL ORDER BY series""",
-        ) { rs, _ -> rs.getString("series") }
-    }
-
     fun findBySeries(series: String, locale: String = "en"): List<SetResponse> {
         return jdbc.query(
             """
@@ -62,10 +69,10 @@ class SetQueryRepository(private val jdbc: JdbcTemplate) {
 
     private fun ResultSet.toSetResponse() = SetResponse(
         id             = getString("id"),
-        code           = getString("code"),
         series         = getString("series"),
-        releaseDate    = getObject("release_date", LocalDate::class.java),
+        code           = getString("code"),
         name           = getString("name"),
+        releaseDate    = getObject("release_date", LocalDate::class.java),
         mainSetCount   = getInt("main_set_count").takeUnless { wasNull() },
         masterSetCount = getInt("master_set_count").takeUnless { wasNull() },
     )

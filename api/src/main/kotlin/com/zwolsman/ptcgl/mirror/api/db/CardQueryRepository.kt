@@ -20,7 +20,7 @@ class CardQueryRepository(
     fun findBySetId(setId: String, locale: String): List<CardResponse> {
         val cards = jdbc.query(
             """
-            SELECT c.*, s.main_set_count, r.display_name AS rarity_display
+            SELECT c.*, s.series, s.main_set_count, r.display_name AS rarity_display
             FROM card c
             LEFT JOIN "set" s ON s.id = c.set_id
             LEFT JOIN rarity r ON r.code = c.rarity
@@ -36,7 +36,7 @@ class CardQueryRepository(
     fun findById(id: String, locale: String): CardResponse? {
         val card = jdbc.query(
             """
-            SELECT c.*, s.main_set_count, r.display_name AS rarity_display
+            SELECT c.*, s.series, s.main_set_count, r.display_name AS rarity_display
             FROM card c
             LEFT JOIN "set" s ON s.id = c.set_id
             LEFT JOIN rarity r ON r.code = c.rarity
@@ -117,6 +117,7 @@ class CardQueryRepository(
             CardResponse(
                 id             = c.id,
                 setId          = c.setId,
+                series         = c.series,
                 number         = formattedNumber,
                 position       = position,
                 name           = names[c.id],
@@ -160,6 +161,7 @@ class CardQueryRepository(
     private fun ResultSet.toCardRow() = CardRow(
         id               = getString("id"),
         setId            = getString("set_id"),
+        series           = getString("series"),
         number           = getString("number"),
         rarityDisplay    = getString("rarity_display"),
         regulationMark   = getString("regulation_mark"),
@@ -219,7 +221,7 @@ class CardQueryRepository(
     }
 
     private data class CardRow(
-        val id: String, val setId: String, val number: String,
+        val id: String, val setId: String, val series: String?, val number: String,
         val rarityDisplay: String?, val regulationMark: String?, val archetype: String?,
         val hp: Int?, val types: List<String>, val evolvesFrom: String?,
         val retreat: Int?, val weaknessType: String?, val weaknessAmount: String?,
