@@ -4,6 +4,7 @@ import com.zwolsman.ptcgl.mirror.harvester.domain.CardAttackLocalizationRecord
 import com.zwolsman.ptcgl.mirror.harvester.domain.CardAttackRecord
 import com.zwolsman.ptcgl.mirror.harvester.domain.CardLocalizationRecord
 import com.zwolsman.ptcgl.mirror.harvester.domain.CardRecord
+import org.springframework.jdbc.core.ConnectionCallback
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.core.BatchPreparedStatementSetter
 import org.springframework.stereotype.Repository
@@ -138,9 +139,25 @@ class CardRepository(private val jdbc: JdbcTemplate) {
         })
     }
 
-    /** Returns unique (set_id, number) pairs for all cards currently in the database. */
-    fun findDistinctCardKeys(): List<Pair<String, String>> =
-        jdbc.query("SELECT DISTINCT set_id, number FROM card ORDER BY set_id, number") { rs, _ ->
-            rs.getString("set_id") to rs.getString("number")
+    /** Returns unique (set_id, number) pairs for cards in the given sets, or all sets if null. */
+    fun findDistinctCardKeys(setIds: List<String>? = null): List<Pair<String, String>> {
+        if (setIds.isNullOrEmpty()) {
+            return jdbc.query("SELECT DISTINCT set_id, number FROM card ORDER BY set_id, number") { rs, _ ->
+                rs.getString("set_id") to rs.getString("number")
+            }
         }
+        return jdbc.execute(ConnectionCallback { conn ->
+            val arr = conn.createArrayOf("text", setIds.toTypedArray())
+            conn.prepareStatement(
+                "SELECT DISTINCT set_id, number FROM card WHERE set_id = ANY(?) ORDER BY set_id, number"
+            ).use { ps ->
+                ps.setArray(1, arr)
+                ps.executeQuery().use { rs ->
+                    val result = mutableListOf<Pair<String, String>>()
+                    while (rs.next()) result += rs.getString("set_id") to rs.getString("number")
+                    result
+                }
+            }
+        })!!
+    }
 }

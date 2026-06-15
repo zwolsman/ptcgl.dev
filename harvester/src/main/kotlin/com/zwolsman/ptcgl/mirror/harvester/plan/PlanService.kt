@@ -135,8 +135,11 @@ class PlanService(
         }
 
         // --- 4. Derive expected asset names from cards and sets in the DB ---
-        val cardKeys = cardRepo.findDistinctCardKeys()    // (set_id, number)
-        val setIds   = setRepo.findAllSetIds()
+        // When scoped (--latest / --set), only include the target set's assets so the ledger
+        // stays focused and markStale doesn't incorrectly flag other sets' pending assets.
+        val scopedSetIds = if (setFilter != null || latestOnly) targetCodes else null
+        val cardKeys = cardRepo.findDistinctCardKeys(scopedSetIds)
+        val setIds   = scopedSetIds ?: setRepo.findAllSetIds()
         val expectedAssets = deriveExpectedAssetNames(cardKeys, setIds, locale)
         log.info("Expecting {} asset names from {} card keys and {} sets",
             expectedAssets.size, cardKeys.size, setIds.size)
@@ -164,14 +167,17 @@ class PlanService(
         log.info("Upserting {} asset_object ledger entries (filtered from full manifest)", desired.size)
         assetRepo.upsertDesiredAssets(desired)
 
-        val activeAssets = desired.map { it.assetName to it.locale }.toSet()
-        assetRepo.markStale(activeAssets)
+        // Only mark stale on a full run — scoped runs must not touch other sets' pending assets.
+        if (scopedSetIds == null) {
+            val activeAssets = desired.map { it.assetName to it.locale }.toSet()
+            assetRepo.markStale(activeAssets)
+        }
 
         revisionRepo.save(bundleManifestId, bundleManifestDoc.revision)
         log.info("Phase A ledger complete. {} desired assets in ledger.", desired.size)
 
         // --- 6. Download PENDING assets from CDN → S3 (always runs) ---
-        val scopeFilter = if (setFilter != null || latestOnly) targetCodes else null
+        val scopeFilter = scopedSetIds
         val pendingCount = assetRepo.countPending(scopeFilter)
         log.info("Phase B: {} assets pending download from CDN to S3…", pendingCount)
         val downloaded = assetDownloadService.downloadAll(setIds = scopeFilter)

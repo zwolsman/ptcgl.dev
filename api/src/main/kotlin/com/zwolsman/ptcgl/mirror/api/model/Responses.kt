@@ -29,6 +29,7 @@ data class SetResponse(
     val mainSetCount: Int?,
     /** Full collectible set size including secret rares (null for promo/alt sets). */
     val masterSetCount: Int?,
+    val logo: String?,
 )
 
 data class CardSummaryResponse(
