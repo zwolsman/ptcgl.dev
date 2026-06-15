@@ -122,7 +122,7 @@ class CardQueryRepository(
                 .filter { it.setId == c.setId && it.number == c.number && it.id != c.id }
                 .map { it.id }
             val otherPrints = siblings
-                .filter { (it.setId != c.setId || it.number != c.number) && it.id != c.id }
+                .filter { (it.setId != c.setId || it.number != c.number) && it.id != c.id && it.id.substringAfterLast('_').all(Char::isDigit) }
                 .map { it.id }
 
             CardResponse(
