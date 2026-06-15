@@ -2,6 +2,7 @@ package com.zwolsman.ptcgl.mirror.harvester.download
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.zwolsman.ptcgl.mirror.harvester.db.AssetLedgerRepository
+import com.zwolsman.ptcgl.mirror.harvester.db.MaterialManifestEntry
 import com.zwolsman.ptcgl.unity.bundle.BundleFile
 import com.zwolsman.ptcgl.unity.bundle.UnityBundle
 import com.zwolsman.ptcgl.unity.serialized.SerializedFileParser
@@ -38,12 +39,12 @@ class AssetDecodeService(
      * S3 key for extracted textures: decoded/{s3_key_raw}/{m_Name}
      * s3_key_decoded is set to the decoded/ prefix.
      */
-    fun decodeAll(batchSize: Int = 50): Int {
+    fun decodeAll(batchSize: Int = 50, setIds: List<String>? = null): Int {
         var total = 0
         var failed = 0
 
         while (true) {
-            val batch = assetRepo.findDoneWithoutDecoded(batchSize)
+            val batch = assetRepo.findDoneWithoutDecoded(batchSize, setIds)
             if (batch.isEmpty()) break
 
             log.info("Decode batch: {} bundles (decoded={}, failed={})", batch.size, total, failed)
@@ -56,17 +57,26 @@ class AssetDecodeService(
                     val decodedPrefix = "decoded/${asset.s3KeyRaw}"
                     val result = extractAndUpload(bundleFiles, decodedPrefix)
 
-                    if (result.textureCount > 0) {
+                    if (result.extractedCount > 0) {
                         assetRepo.markDecoded(
-                            assetName      = asset.assetName,
-                            locale         = asset.locale,
-                            s3KeyDecoded   = decodedPrefix,
-                            whiteplateName = result.whiteplateName,
-                            etchName       = result.etchName,
+                            assetName    = asset.assetName,
+                            locale       = asset.locale,
+                            s3KeyDecoded = decodedPrefix,
                         )
+                        if (result.manifests.isNotEmpty()) {
+                            assetRepo.upsertManifests(asset.assetName, result.manifests.map { m ->
+                                MaterialManifestEntry(
+                                    variantSuffix  = m.variantSuffix,
+                                    whiteplateName = m.whiteplateName,
+                                    etchName       = m.etchName,
+                                    foilType       = m.foilType,
+                                    shaderPath     = m.shaderPath,
+                                )
+                            })
+                        }
                         total++
                     } else {
-                        log.warn("No Texture2D extracted from {}", asset.s3KeyRaw)
+                        log.warn("No assets extracted from {}", asset.s3KeyRaw)
 
                         failed++
                     }
@@ -81,10 +91,17 @@ class AssetDecodeService(
         return total
     }
 
-    private data class DecodeResult(
-        val textureCount: Int,
+    private data class ManifestData(
+        val variantSuffix: String,
         val whiteplateName: String?,
         val etchName: String?,
+        val foilType: String?,
+        val shaderPath: String?,
+    )
+
+    private data class DecodeResult(
+        val extractedCount: Int,
+        val manifests: List<ManifestData>,
     )
 
     /**
@@ -101,8 +118,7 @@ class AssetDecodeService(
         val cabFiles = bundleFiles.filter { !it.path.endsWith(".resS", ignoreCase = true) }
 
         var count = 0
-        var whiteplateName: String? = null
-        var etchName: String? = null
+        val manifests = mutableListOf<ManifestData>()
 
         for (cab in cabFiles) {
             val sf = try {
@@ -151,9 +167,16 @@ class AssetDecodeService(
                             val objData = TypeTreeReader.read(sf, obj)
                             val name = (objData["m_Name"] as? String)?.takeIf { it.isNotBlank() } ?: continue
 
-                            if (name == "MaterialManifest") {
-                                whiteplateName = (objData["_w"] as? String)?.takeIf { it.isNotBlank() }
-                                etchName       = (objData["_e"] as? String)?.takeIf { it.isNotBlank() }
+                            if (name.startsWith("MaterialManifest")) {
+                                // suffix: "" for standard, "ph" for MaterialManifest_ph, etc.
+                                val suffix = name.removePrefix("MaterialManifest").removePrefix("_")
+                                manifests += ManifestData(
+                                    variantSuffix  = suffix,
+                                    whiteplateName = (objData["_w"] as? String)?.takeIf { it.isNotBlank() },
+                                    etchName       = (objData["_e"] as? String)?.takeIf { it.isNotBlank() },
+                                    foilType       = (objData["_f"] as? String)?.takeIf { it.isNotBlank() },
+                                    shaderPath     = (objData["_s"] as? String)?.takeIf { it.isNotBlank() },
+                                )
                             }
 
                             val json = mapper.writeValueAsBytes(objData)
@@ -174,7 +197,7 @@ class AssetDecodeService(
                 }
             }
         }
-        return DecodeResult(textureCount = count, whiteplateName = whiteplateName, etchName = etchName)
+        return DecodeResult(extractedCount = count, manifests = manifests)
     }
 
     /** Coerces Int or Long TypeTree values to Int. */

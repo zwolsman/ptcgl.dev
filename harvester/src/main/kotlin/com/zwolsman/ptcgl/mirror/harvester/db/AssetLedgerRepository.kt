@@ -8,6 +8,14 @@ import org.springframework.transaction.annotation.Transactional
 import java.sql.PreparedStatement
 import java.sql.Types
 
+data class MaterialManifestEntry(
+    val variantSuffix: String,
+    val whiteplateName: String?,
+    val etchName: String?,
+    val foilType: String?,
+    val shaderPath: String?,
+)
+
 data class ClaimedAsset(
     val assetName: String,
     val locale: String,
@@ -77,13 +85,16 @@ class AssetLedgerRepository(private val jdbc: JdbcTemplate) {
     }
 
     @Transactional
-    fun claimPending(limit: Int, leaseSeconds: Long = 300): List<ClaimedAsset> {
-        // CTE atomically selects PENDING rows (SKIP LOCKED) and flips them to IN_PROGRESS.
-        return jdbc.query("""
+    fun claimPending(limit: Int, leaseSeconds: Long = 300, setIds: List<String>? = null): List<ClaimedAsset> {
+        val prefixes = setIds?.flatMap { listOf("${it}_", "expansion_${it}_") }
+        val prefixClause = if (prefixes.isNullOrEmpty()) "" else
+            "AND (" + prefixes.joinToString(" OR ") { "asset_name LIKE ?" } + ")"
+        val sql = """
             WITH claimed AS (
                 SELECT asset_name, locale
                   FROM asset_object
                  WHERE status = 'PENDING'
+                   $prefixClause
                  ORDER BY updated_at
                  LIMIT ?
                  FOR UPDATE SKIP LOCKED
@@ -97,13 +108,40 @@ class AssetLedgerRepository(private val jdbc: JdbcTemplate) {
              WHERE a.asset_name = claimed.asset_name
                AND a.locale     = claimed.locale
          RETURNING a.asset_name, a.locale, a.bucket
-        """.trimIndent(), { rs, _ ->
+        """.trimIndent()
+        val params: Array<Any> = (prefixes?.map { "$it%" } ?: emptyList<String>())
+            .plus(limit)
+            .plus(leaseSeconds.toString())
+            .toTypedArray()
+        return jdbc.query(sql, { rs, _ ->
             ClaimedAsset(
                 assetName = rs.getString("asset_name"),
                 locale    = rs.getString("locale"),
                 bucket    = rs.getString("bucket"),
             )
-        }, limit, leaseSeconds.toString())
+        }, *params)
+    }
+
+    fun countPending(setIds: List<String>? = null): Int {
+        val prefixes = setIds?.flatMap { listOf("${it}_", "expansion_${it}_") }
+        val prefixClause = if (prefixes.isNullOrEmpty()) "" else
+            "AND (" + prefixes.joinToString(" OR ") { "asset_name LIKE ?" } + ")"
+        val sql = "SELECT COUNT(*) FROM asset_object WHERE status = 'PENDING' $prefixClause"
+        val params = prefixes?.map { "$it%" }?.toTypedArray() ?: emptyArray()
+        return jdbc.queryForObject(sql, Int::class.java, *params) ?: 0
+    }
+
+    fun countDoneWithoutDecoded(setIds: List<String>? = null): Int {
+        val prefixes = setIds?.flatMap { listOf("${it}_", "expansion_${it}_") }
+        val prefixClause = if (prefixes.isNullOrEmpty()) "" else
+            "AND (" + prefixes.joinToString(" OR ") { "asset_name LIKE ?" } + ")"
+        val sql = """
+            SELECT COUNT(*) FROM asset_object
+             WHERE status = 'DONE' AND s3_key_decoded IS NULL AND s3_key_raw IS NOT NULL
+               $prefixClause
+        """.trimIndent()
+        val params = prefixes?.map { "$it%" }?.toTypedArray() ?: emptyArray()
+        return jdbc.queryForObject(sql, Int::class.java, *params) ?: 0
     }
 
     fun markDone(assetName: String, locale: String, s3KeyRaw: String) {
@@ -118,38 +156,64 @@ class AssetLedgerRepository(private val jdbc: JdbcTemplate) {
         """.trimIndent(), s3KeyRaw, assetName, locale)
     }
 
-    fun findDoneWithoutDecoded(limit: Int): List<DoneAsset> =
-        jdbc.query("""
+    fun findDoneWithoutDecoded(limit: Int, setIds: List<String>? = null): List<DoneAsset> {
+        // asset names follow {setId}_{locale}_{number} or expansion_{setId}_{locale}
+        val prefixes = setIds?.flatMap { listOf("${it}_", "expansion_${it}_") }
+        val prefixClause = if (prefixes.isNullOrEmpty()) "" else
+            "AND (" + prefixes.joinToString(" OR ") { "asset_name LIKE ?" } + ")"
+        val sql = """
             SELECT asset_name, locale, bucket, s3_key_raw
               FROM asset_object
              WHERE status = 'DONE'
                AND s3_key_decoded IS NULL
                AND s3_key_raw IS NOT NULL
+               $prefixClause
              LIMIT ?
-        """.trimIndent(), { rs, _ ->
+        """.trimIndent()
+        val params: Array<Any> = (prefixes?.map { "$it%" } ?: emptyList<String>()).plus(limit).toTypedArray()
+        return jdbc.query(sql, { rs, _ ->
             DoneAsset(
                 assetName = rs.getString("asset_name"),
                 locale    = rs.getString("locale"),
                 bucket    = rs.getString("bucket"),
                 s3KeyRaw  = rs.getString("s3_key_raw"),
             )
-        }, limit)
+        }, *params)
+    }
 
-    fun markDecoded(
-        assetName: String,
-        locale: String,
-        s3KeyDecoded: String,
-        whiteplateName: String? = null,
-        etchName: String? = null,
-    ) {
+    fun markDecoded(assetName: String, locale: String, s3KeyDecoded: String) {
         jdbc.update("""
             UPDATE asset_object
-               SET s3_key_decoded  = ?,
-                   whiteplate_name = ?,
-                   etch_name       = ?,
-                   updated_at      = now()
+               SET s3_key_decoded = ?,
+                   updated_at     = now()
              WHERE asset_name = ? AND locale = ?
-        """.trimIndent(), s3KeyDecoded, whiteplateName, etchName, assetName, locale)
+        """.trimIndent(), s3KeyDecoded, assetName, locale)
+    }
+
+    @Transactional
+    fun upsertManifests(bundleAssetName: String, entries: List<MaterialManifestEntry>) {
+        if (entries.isEmpty()) return
+        val sql = """
+            INSERT INTO material_manifest (bundle_asset_name, variant_suffix, whiteplate_name, etch_name, foil_type, shader_path)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT (bundle_asset_name, variant_suffix) DO UPDATE SET
+                whiteplate_name = EXCLUDED.whiteplate_name,
+                etch_name       = EXCLUDED.etch_name,
+                foil_type       = EXCLUDED.foil_type,
+                shader_path     = EXCLUDED.shader_path
+        """.trimIndent()
+        jdbc.batchUpdate(sql, object : BatchPreparedStatementSetter {
+            override fun setValues(ps: PreparedStatement, i: Int) {
+                val e = entries[i]
+                ps.setString(1, bundleAssetName)
+                ps.setString(2, e.variantSuffix)
+                ps.setString(3, e.whiteplateName)
+                ps.setString(4, e.etchName)
+                ps.setString(5, e.foilType)
+                ps.setString(6, e.shaderPath)
+            }
+            override fun getBatchSize() = entries.size
+        })
     }
 
     fun markFailed(assetName: String, locale: String, error: String) {
