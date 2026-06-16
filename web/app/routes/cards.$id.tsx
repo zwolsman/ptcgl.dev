@@ -52,6 +52,37 @@ export default function CardDetail({
   const card = loaderData
   const image = card.assets.hires ?? card.assets.thumb
 
+  const [overlayOpen, setOverlayOpen] = React.useState(false)
+  const overlayCardRef = React.useRef<HTMLImageElement>(null)
+
+  React.useEffect(() => {
+    if (!overlayOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOverlayOpen(false) }
+    document.addEventListener("keydown", onKey)
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.removeEventListener("keydown", onKey)
+      document.body.style.overflow = ""
+    }
+  }, [overlayOpen])
+
+  function onCardMouseMove(e: React.MouseEvent<HTMLImageElement>) {
+    const el = overlayCardRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const x = (e.clientX - rect.left) / rect.width - 0.5
+    const y = (e.clientY - rect.top) / rect.height - 0.5
+    el.style.transition = "transform 0.08s ease"
+    el.style.transform = `perspective(800px) rotateY(${x * 22}deg) rotateX(${-y * 16}deg)`
+  }
+
+  function onCardMouseLeave() {
+    const el = overlayCardRef.current
+    if (!el) return
+    el.style.transition = "transform 0.6s ease"
+    el.style.transform = "perspective(800px) rotateY(0deg) rotateX(0deg)"
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b sticky top-0 bg-background/95 backdrop-blur-sm z-10">
@@ -72,8 +103,9 @@ export default function CardDetail({
               <img
                 src={image}
                 alt={card.name ?? card.id}
-                className="w-full object-cover shadow-lg"
+                className="w-full object-cover shadow-lg cursor-zoom-in"
                 style={{ aspectRatio: "0.718", borderRadius: "4.55% / 3.5%" }}
+                onClick={() => setOverlayOpen(true)}
               />
             ) : (
               <div
@@ -134,7 +166,12 @@ export default function CardDetail({
                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
                       Evolves From
                     </p>
-                    <p className="font-semibold">{card.evolvesFrom}</p>
+                    <Link
+                      to={`/search?name=${encodeURIComponent(card.evolvesFrom)}`}
+                      className="font-semibold hover:underline text-primary"
+                    >
+                      {card.evolvesFrom}
+                    </Link>
                   </div>
                 )}
                 {card.weakness && (
@@ -232,6 +269,32 @@ export default function CardDetail({
           </div>
         </div>
       </main>
+
+      {overlayOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center cursor-zoom-out"
+          style={{ animation: "overlay-fade-in 0.25s ease forwards", backgroundColor: "rgba(0,0,0,0.85)" }}
+          onClick={() => setOverlayOpen(false)}
+        >
+          <img
+            ref={overlayCardRef}
+            src={card.assets.hires ?? card.assets.thumb ?? ""}
+            alt={card.name ?? card.id}
+            className="max-h-[88vh] w-auto cursor-default"
+            style={{
+              aspectRatio: "0.718",
+              borderRadius: "4.55% / 3.5%",
+              boxShadow: "0 30px 80px rgba(0,0,0,0.6)",
+              animation: "card-swirl-in 0.7s ease-out forwards",
+              willChange: "transform",
+              transformStyle: "preserve-3d",
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onMouseMove={onCardMouseMove}
+            onMouseLeave={onCardMouseLeave}
+          />
+        </div>
+      )}
     </div>
   )
 }
