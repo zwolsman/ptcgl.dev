@@ -1,10 +1,22 @@
-FROM node:lts-alpine AS build
+FROM node:lts-alpine AS development-dependencies-env
+COPY web/ /app
 WORKDIR /app
-COPY web/package*.json ./
 RUN npm ci
-COPY web/ .
+
+FROM node:lts-alpine AS production-dependencies-env
+COPY web/package.json web/package-lock.json /app/
+WORKDIR /app
+RUN npm ci --omit=dev
+
+FROM node:lts-alpine AS build-env
+COPY web/ /app/
+COPY --from=development-dependencies-env /app/node_modules /app/node_modules
+WORKDIR /app
 RUN npm run build
 
-FROM nginx:alpine
-COPY --from=build /app/dist /usr/share/nginx/html
-COPY docker/web.nginx.conf /etc/nginx/conf.d/default.conf
+FROM node:lts-alpine
+COPY web/package.json web/package-lock.json /app/
+COPY --from=production-dependencies-env /app/node_modules /app/node_modules
+COPY --from=build-env /app/build /app/build
+WORKDIR /app
+CMD ["npm", "run", "start"]
