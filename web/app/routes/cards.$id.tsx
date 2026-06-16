@@ -226,13 +226,12 @@ export default function CardDetail({
             </div>
 
             {/* Stats */}
-            {(card.hp !== null ||
-              card.retreat !== null ||
+            {(card.hp != null ||
               card.evolvesFrom ||
               card.weakness ||
               card.resistance) && (
               <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
-                {card.hp !== null && (
+                {card.hp != null && (
                   <div>
                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
                       HP
@@ -240,7 +239,7 @@ export default function CardDetail({
                     <p className="font-semibold">{card.hp}</p>
                   </div>
                 )}
-                {card.retreat !== null && (
+                {card.hp != null && card.retreat != null && (
                   <div>
                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
                       Retreat
