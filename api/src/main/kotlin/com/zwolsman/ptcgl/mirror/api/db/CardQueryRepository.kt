@@ -19,6 +19,52 @@ class CardQueryRepository(
     @param:Value("\${mirror.api.asset-base-url}") private val assetBaseUrl: String,
 ) {
 
+    fun findByName(name: String, locale: String): List<CardSummaryResponse> {
+        if (name.isBlank()) return emptyList()
+        val rows = jdbc.query(
+            """
+            SELECT c.id, c.set_id, c.number, s.main_set_count, cl.name
+              FROM card_localization cl
+              JOIN card c ON c.id = cl.card_id
+              LEFT JOIN "set" s ON s.id = c.set_id
+             WHERE cl.locale = ? AND cl.name ILIKE ?
+               AND c.id ~ '_[0-9]+$'
+             ORDER BY c.set_id, c.number
+            """.trimIndent(),
+            { rs, _ ->
+                NameSearchRow(
+                    id           = rs.getString("id"),
+                    setId        = rs.getString("set_id"),
+                    number       = rs.getString("number"),
+                    mainSetCount = rs.getObject("main_set_count") as? Int,
+                    name         = rs.getString("name"),
+                )
+            },
+            locale,
+            "%$name%",
+        )
+        if (rows.isEmpty()) return emptyList()
+
+        val thumbAssets = queryByIds<AssetRow>(
+            "SELECT asset_name, s3_key_decoded, texture_name FROM asset_object WHERE asset_name = ANY(?) AND s3_key_decoded IS NOT NULL",
+            rows.map { "${it.setId}_${locale}_${it.number}_t" },
+        ) { rs, _ ->
+            AssetRow(rs.getString("asset_name"), rs.getString("s3_key_decoded"), rs.getString("texture_name"))
+        }.associateBy { it.assetName }
+
+        return rows.map { c ->
+            val formatted = c.number.toIntOrNull()?.toString() ?: c.number
+            val thumbName = "${c.setId}_${locale}_${c.number}_t"
+            CardSummaryResponse(
+                id       = c.id,
+                number   = formatted,
+                position = c.mainSetCount?.let { "$formatted / $it" },
+                name     = c.name,
+                thumb    = thumbAssets[thumbName]?.let { assetUrl(thumbName, it.s3KeyDecoded, it.textureName) },
+            )
+        }
+    }
+
     fun findSummariesBySetId(setId: String, locale: String): List<CardSummaryResponse> {
         val cards = jdbc.query(
             """
@@ -346,6 +392,10 @@ class CardQueryRepository(
             }
         })!!
     }
+
+    private data class NameSearchRow(
+        val id: String, val setId: String, val number: String, val mainSetCount: Int?, val name: String?,
+    )
 
     private data class CardRow(
         val id: String, val setId: String, val series: String?, val number: String,
