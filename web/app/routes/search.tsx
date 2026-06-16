@@ -1,18 +1,21 @@
 import { Link } from "react-router"
 import { searchCards, type CardSummary } from "~/api/client"
+import { getLocale } from "~/lib/locale"
+import { PageHeader } from "~/components/page-header"
 import type { LoaderFunctionArgs } from "react-router"
 
 export function meta({ data }: { data: { name: string; cards: CardSummary[] } | undefined }) {
   const name = data?.name
-  return [{ title: name ? `"${name}" — Search | PTCGL Mirror` : "Search | PTCGL Mirror" }]
+  return [{ title: name ? `"${name}" — Search | ptcgl.dev` : "Search | ptcgl.dev" }]
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
+  const locale = getLocale(request)
   const params = new URL(request.url).searchParams
   const name = params.get("name") ?? ""
   const exact = params.get("exact") === "true"
-  const cards = name.trim() ? await searchCards(name, "en", exact) : []
-  return { name, cards }
+  const cards = name.trim() ? await searchCards(name, locale, exact) : []
+  return { locale, name, cards }
 }
 
 export default function Search({
@@ -20,24 +23,22 @@ export default function Search({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>
 }) {
-  const { name, cards } = loaderData
+  const { locale, name, cards } = loaderData
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b sticky top-0 bg-background/95 backdrop-blur-sm z-10">
-        <div className="container mx-auto px-4 h-14 flex items-center gap-3">
-          <Link
-            to="/"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            ← Home
-          </Link>
-          <span className="text-muted-foreground text-sm">/</span>
-          <span className="text-sm font-medium truncate">
-            {name ? `"${name}"` : "Search"}
-          </span>
-        </div>
-      </header>
+      <PageHeader locale={locale}>
+        <Link
+          to="/"
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          ← Home
+        </Link>
+        <span className="text-muted-foreground text-sm">/</span>
+        <span className="text-sm font-medium truncate">
+          {name ? `"${name}"` : "Search"}
+        </span>
+      </PageHeader>
       <main className="container mx-auto px-4 py-8">
         {name && (
           <p className="text-sm text-muted-foreground mb-6">

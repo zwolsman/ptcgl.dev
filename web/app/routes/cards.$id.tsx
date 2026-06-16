@@ -6,28 +6,128 @@ import { Badge } from "~/components/ui/badge"
 import { PageHeader } from "~/components/page-header"
 import type { LoaderFunctionArgs } from "react-router"
 
-const SPRITE_RE = /<sprite name="([^"]+)"[^>]*>/g
+const ENERGY_LETTER_MAP: Record<string, string> = {
+  G: "grass", R: "fire", W: "water", L: "lightning", P: "psychic",
+  F: "fighting", D: "darkness", M: "metal", Y: "fairy", N: "dragon", C: "colorless",
+}
+
+const ENERGY_SPRITES: Record<string, string> = {
+  fire: "/sprites/energy-black/fire.png",
+  grass: "/sprites/energy-black/grass.png",
+  water: "/sprites/energy-black/water.png",
+  lightning: "/sprites/energy-black/lightning.png",
+  psychic: "/sprites/energy-black/psychic.png",
+  fighting: "/sprites/energy-black/fighting.png",
+  darkness: "/sprites/energy-black/darkness.png",
+  metal: "/sprites/energy-black/metal.png",
+  dragon: "/sprites/energy-black/dragon.png",
+  fairy: "/sprites/energy-black/fairy.png",
+  colorless: "/sprites/energy-black/colorless.png",
+}
+
+const BADGE_SPRITES: Record<string, string> = {
+  ex_atk: "/sprites/badges/ex.png",
+  ex_lower_atk: "/sprites/badges/ex.png",
+  ex_lower: "/sprites/badges/ex.png",
+  vstar_atk: "/sprites/badges/vstar.png",
+  vStar: "/sprites/badges/vstar.png",
+  acespec: "/sprites/badges/ace-spec.png",
+}
+
+// Matches <sprite name="..."> tags or {ex}/{VSTAR}/{ACE SPEC} placeholders
+const TOKEN_RE = /<sprite name="([^"]+)"[^>]*>|\{(ACE SPEC|VSTAR|ex)\}/g
+
+const PLACEHOLDER_SPRITES: Record<string, string> = {
+  ex: "/sprites/badges/ex.png",
+  VSTAR: "/sprites/badges/vstar.png",
+  "ACE SPEC": "/sprites/badges/ace-spec.png",
+}
+
+function SpriteImg({ src, alt }: { src: string; alt: string }) {
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className="inline-block align-middle mx-0.5"
+      style={{ height: "1.1em", verticalAlign: "middle" }}
+    />
+  )
+}
+
+function EnergyCost({ cost }: { cost: string }) {
+  return (
+    <span className="flex items-center gap-0.5 shrink-0">
+      {cost.split("").map((letter, i) => {
+        const name = ENERGY_LETTER_MAP[letter]
+        return name ? (
+          <img key={i} src={`/sprites/energy/${name}.png`} alt={name} style={{ height: "1em" }} />
+        ) : (
+          <span key={i} className="text-xs text-muted-foreground font-mono">{letter}</span>
+        )
+      })}
+    </span>
+  )
+}
+
+function CardName({ name }: { name: string }) {
+  // Replace {G}, {R}, etc. in energy card names with inline icons
+  const parts = name.split(/\{([A-Z])\}/g)
+  if (parts.length === 1) return <>{name}</>
+  return (
+    <>
+      {parts.map((part, i) =>
+        i % 2 === 0 ? (
+          part
+        ) : (
+          <img
+            key={i}
+            src={`/sprites/energy/${ENERGY_LETTER_MAP[part] ?? "colorless"}.png`}
+            alt={part}
+            className="inline-block align-middle mx-0.5"
+            style={{ height: "0.85em" }}
+          />
+        ),
+      )}
+    </>
+  )
+}
 
 function AttackText({ text }: { text: string }) {
   const parts: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
 
-  SPRITE_RE.lastIndex = 0
-  while ((match = SPRITE_RE.exec(text)) !== null) {
+  TOKEN_RE.lastIndex = 0
+  while ((match = TOKEN_RE.exec(text)) !== null) {
     if (match.index > last) {
-      const chunk = text.slice(last, match.index)
-      parts.push(<span key={last} dangerouslySetInnerHTML={{ __html: chunk }} />)
+      parts.push(<span key={last} dangerouslySetInnerHTML={{ __html: text.slice(last, match.index) }} />)
     }
-    const name = match[1]
-    parts.push(
-      <span
-        key={match.index}
-        className="inline-flex items-center px-1 py-px rounded text-[10px] font-medium bg-secondary text-secondary-foreground mx-0.5 align-middle"
-      >
-        {name.charAt(0).toUpperCase() + name.slice(1).toLowerCase()}
-      </span>,
-    )
+
+    const spriteName = match[1] // from <sprite name="...">
+    const placeholder = match[2] // from {PLACEHOLDER}
+    const key = match.index
+
+    if (spriteName) {
+      const src = ENERGY_SPRITES[spriteName] ?? BADGE_SPRITES[spriteName]
+      if (src) {
+        parts.push(<SpriteImg key={key} src={src} alt={spriteName} />)
+      } else {
+        parts.push(
+          <span
+            key={key}
+            className="inline-flex items-center px-1 py-px rounded text-[10px] font-medium bg-secondary text-secondary-foreground mx-0.5 align-middle"
+          >
+            {spriteName}
+          </span>,
+        )
+      }
+    } else if (placeholder) {
+      const src = PLACEHOLDER_SPRITES[placeholder]
+      if (src) {
+        parts.push(<SpriteImg key={key} src={src} alt={placeholder} />)
+      }
+    }
+
     last = match.index + match[0].length
   }
 
@@ -105,7 +205,9 @@ export default function CardDetail({
           {/* Card details */}
           <div className="flex-1 space-y-5 min-w-0">
             <div>
-              <h1 className="text-2xl font-bold text-foreground">{card.name ?? card.id}</h1>
+              <h1 className="text-2xl font-bold text-foreground">
+                {card.name ? <CardName name={card.name} /> : card.id}
+              </h1>
               <p className="text-sm text-muted-foreground mt-0.5">
                 #{card.position ?? card.number}
               </p>
@@ -143,7 +245,15 @@ export default function CardDetail({
                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
                       Retreat
                     </p>
-                    <p className="font-semibold">{card.retreat}</p>
+                    <span className="flex items-center gap-0.5 mt-0.5">
+                      {card.retreat === 0 ? (
+                        <span className="font-semibold text-sm">Free</span>
+                      ) : (
+                        Array.from({ length: card.retreat }).map((_, i) => (
+                          <img key={i} src="/sprites/energy/colorless.png" alt="colorless" style={{ height: "1.1em" }} />
+                        ))
+                      )}
+                    </span>
                   </div>
                 )}
                 {card.evolvesFrom && (
@@ -164,9 +274,18 @@ export default function CardDetail({
                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
                       Weakness
                     </p>
-                    <p className="font-semibold">
-                      {card.weakness.type} {card.weakness.amount}
-                    </p>
+                    <span className="flex items-center gap-1 mt-0.5 font-semibold text-sm">
+                      {ENERGY_LETTER_MAP[card.weakness.type] && (
+                        <img
+                          src={`/sprites/energy/${ENERGY_LETTER_MAP[card.weakness.type]}.png`}
+                          alt={card.weakness.type}
+                          style={{ height: "1.1em" }}
+                        />
+                      )}
+                      {card.weakness.amount
+                        ? (card.weakness.amount.includes("-") ? card.weakness.amount : `×${card.weakness.amount}`)
+                        : "×2"}
+                    </span>
                   </div>
                 )}
                 {card.resistance && (
@@ -174,9 +293,16 @@ export default function CardDetail({
                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
                       Resistance
                     </p>
-                    <p className="font-semibold">
-                      {card.resistance.type} {card.resistance.amount}
-                    </p>
+                    <span className="flex items-center gap-1 mt-0.5 font-semibold text-sm">
+                      {ENERGY_LETTER_MAP[card.resistance.type] && (
+                        <img
+                          src={`/sprites/energy/${ENERGY_LETTER_MAP[card.resistance.type]}.png`}
+                          alt={card.resistance.type}
+                          style={{ height: "1.1em" }}
+                        />
+                      )}
+                      {card.resistance.amount}
+                    </span>
                   </div>
                 )}
               </div>
@@ -207,11 +333,7 @@ export default function CardDetail({
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
-                          {attack.cost && (
-                            <span className="text-xs text-muted-foreground font-mono shrink-0">
-                              {attack.cost}
-                            </span>
-                          )}
+                          {attack.cost && <EnergyCost cost={attack.cost} />}
                           <p className="font-semibold text-sm truncate">
                             {attack.name ?? `Attack ${attack.slot}`}
                           </p>

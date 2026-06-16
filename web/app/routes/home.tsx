@@ -1,5 +1,8 @@
 import { Link } from "react-router"
 import { fetchSeries, fetchSets, type Set as PokemonSet } from "~/api/client"
+import { getLocale } from "~/lib/locale"
+import { PageHeader } from "~/components/page-header"
+import type { LoaderFunctionArgs } from "react-router"
 
 export function meta() {
   return [
@@ -8,9 +11,9 @@ export function meta() {
   ]
 }
 
-export async function loader() {
-  const [series, sets] = await Promise.all([fetchSeries(), fetchSets()])
-
+export async function loader({ request }: LoaderFunctionArgs) {
+  const locale = getLocale(request)
+  const [series, sets] = await Promise.all([fetchSeries(), fetchSets(locale)])
   const setsBySeries = sets.reduce<Record<string, PokemonSet[]>>((acc, set) => {
     const key = set.series ?? "__other__"
     if (!acc[key]) acc[key] = []
@@ -18,21 +21,19 @@ export async function loader() {
     return acc
   }, {})
 
-  // Sort sets within each series by release date desc
   for (const key of Object.keys(setsBySeries)) {
     setsBySeries[key].sort((a, b) =>
       (b.releaseDate ?? "").localeCompare(a.releaseDate ?? ""),
     )
   }
 
-  // Sort series by the max release date of their sets desc
   const sortedSeries = series.slice().sort((a, b) => {
     const maxA = setsBySeries[a.id]?.[0]?.releaseDate ?? ""
     const maxB = setsBySeries[b.id]?.[0]?.releaseDate ?? ""
     return maxB.localeCompare(maxA)
   })
 
-  return { series: sortedSeries, setsBySeries }
+  return { locale, series: sortedSeries, setsBySeries }
 }
 
 export default function Home({
@@ -40,15 +41,13 @@ export default function Home({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>
 }) {
-  const { series, setsBySeries } = loaderData
+  const { locale, series, setsBySeries } = loaderData
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b sticky top-0 bg-background/95 backdrop-blur-sm z-10">
-        <div className="container mx-auto px-4 h-14 flex items-center">
-          <span className="font-semibold text-foreground tracking-tight">ptcgl.dev</span>
-        </div>
-      </header>
+      <PageHeader locale={locale}>
+        <span className="font-semibold text-foreground tracking-tight">ptcgl.dev</span>
+      </PageHeader>
       <main className="container mx-auto px-4 py-8 space-y-10">
         {series.map((s) => {
           const sets = setsBySeries[s.id] ?? []
