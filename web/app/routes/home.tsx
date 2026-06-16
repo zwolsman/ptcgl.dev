@@ -59,7 +59,7 @@ export default function Home({
                 <h2 className="text-sm font-semibold text-foreground">{s.id}</h2>
                 <span className="text-xs text-muted-foreground">{sets.length} sets</span>
               </div>
-              <div className="flex gap-3 overflow-x-auto pb-3 -mx-4 px-4 scrollbar-none">
+              <div className="flex flex-wrap gap-3">
                 {sets.map((set) => (
                   <Link
                     key={set.id}
