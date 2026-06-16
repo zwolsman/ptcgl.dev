@@ -1,7 +1,9 @@
 import * as React from "react"
 import { Link } from "react-router"
 import { fetchCard, type Card } from "~/api/client"
+import { getLocale } from "~/lib/locale"
 import { Badge } from "~/components/ui/badge"
+import { PageHeader } from "~/components/page-header"
 import type { LoaderFunctionArgs } from "react-router"
 
 const SPRITE_RE = /<sprite name="([^"]+)"[^>]*>/g
@@ -36,12 +38,14 @@ function AttackText({ text }: { text: string }) {
   return <>{parts}</>
 }
 
-export function meta({ data }: { data: Card | undefined }) {
-  return [{ title: `${data?.name ?? "Card"} | PTCGL Mirror` }]
+export function meta({ data }: { data: { locale: string; card: Card } | undefined }) {
+  return [{ title: `${data?.card?.name ?? "Card"} | ptcgl.dev` }]
 }
 
-export async function loader({ params }: LoaderFunctionArgs) {
-  return await fetchCard(params.id!)
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const locale = getLocale(request)
+  const card = await fetchCard(params.id!, locale)
+  return { locale, card }
 }
 
 export default function CardDetail({
@@ -49,7 +53,7 @@ export default function CardDetail({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>
 }) {
-  const card = loaderData
+  const { locale, card } = loaderData
   const image = card.assets.hires ?? card.assets.thumb
 
   const [overlayOpen, setOverlayOpen] = React.useState(false)
@@ -64,19 +68,18 @@ export default function CardDetail({
     }
   }, [overlayOpen])
 
-
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b sticky top-0 bg-background/95 backdrop-blur-sm z-10">
-        <div className="container mx-auto px-4 h-14 flex items-center gap-3">
-          <Link
-            to={`/sets/${card.setId}`}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            ← Back to Set
-          </Link>
-        </div>
-      </header>
+      <PageHeader locale={locale}>
+        <Link
+          to={`/sets/${card.setId}`}
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          ← Back to Set
+        </Link>
+        <span className="text-muted-foreground text-sm">/</span>
+        <span className="text-sm font-medium truncate">{card.name ?? card.id}</span>
+      </PageHeader>
       <main className="container mx-auto px-4 py-8">
         <div className="flex flex-col md:flex-row gap-10 max-w-3xl">
           {/* Card image */}
@@ -181,10 +184,12 @@ export default function CardDetail({
 
             {/* Card body text (trainer / energy / ability text) */}
             {card.text && (
-              <div className="rounded-lg border bg-card p-3">
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  <AttackText text={card.text} />
-                </p>
+              <div className="rounded-lg border bg-card p-3 space-y-1.5">
+                {card.text.split("\n").filter(Boolean).map((line, i) => (
+                  <p key={i} className="text-sm text-muted-foreground leading-relaxed">
+                    <AttackText text={line} />
+                  </p>
+                ))}
               </div>
             )}
 

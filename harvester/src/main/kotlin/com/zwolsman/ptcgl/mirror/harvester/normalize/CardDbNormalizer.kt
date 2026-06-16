@@ -103,12 +103,13 @@ object CardDbNormalizer {
             // Prefer LocalizedCardName (locale-specific) over EN Card Name (always English).
             val name = row.str("LocalizedCardName") ?: row.str("EN Card Name") ?: ""
 
-            // Trainer/energy card effect: slot-1 text exists but the slot has no attack name.
-            // Pokémon with attacks will have a slot-1 name, so bodyText stays null for them.
-            val slot1Name = row.str(localizedAttackName(locale, 1)) ?: row.str(SLOT_COLS[0].nameEn)
-            val bodyText = if (slot1Name == null)
-                row.str(localizedAttackText(locale, 1)) ?: row.str(SLOT_COLS[0].textEn)
-            else null
+            // Trainer/energy card effect: collect text from every slot that has no attack name,
+            // joining multiple sections with newline. Pokémon slots with a name are skipped.
+            val bodyText = SLOT_COLS.mapIndexed { idx, cols ->
+                val slot = idx + 1
+                val slotName = row.str(localizedAttackName(locale, slot)) ?: row.str(cols.nameEn)
+                if (slotName == null) row.str(localizedAttackText(locale, slot)) ?: row.str(cols.textEn) else null
+            }.filterNotNull().joinToString("\n").takeIf { it.isNotBlank() }
 
             localizations += CardLocalizationRecord(cardId, locale, name, bodyText)
 
