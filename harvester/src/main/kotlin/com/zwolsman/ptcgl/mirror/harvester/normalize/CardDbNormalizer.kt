@@ -88,7 +88,7 @@ object CardDbNormalizer {
                 rarity           = row.str("Loc Rarity Code"),
                 regulationMark   = row.str("Regulations symbol"),
                 archetype        = row.str("archetypeID"),
-                hp               = row.int("HP"),
+                hp               = row.int("HP")?.takeIf { it > 0 },
                 types            = row.str("EN Type")?.split("/")?.filter { it.isNotBlank() } ?: emptyList(),
                 evolvesFrom      = row.str("EN Evolves From"),
                 groupId          = row.str("Group ID"),
@@ -102,7 +102,15 @@ object CardDbNormalizer {
 
             // Prefer LocalizedCardName (locale-specific) over EN Card Name (always English).
             val name = row.str("LocalizedCardName") ?: row.str("EN Card Name") ?: ""
-            localizations += CardLocalizationRecord(cardId, locale, name)
+
+            // Trainer/energy card effect: slot-1 text exists but the slot has no attack name.
+            // Pokémon with attacks will have a slot-1 name, so bodyText stays null for them.
+            val slot1Name = row.str(localizedAttackName(locale, 1)) ?: row.str(SLOT_COLS[0].nameEn)
+            val bodyText = if (slot1Name == null)
+                row.str(localizedAttackText(locale, 1)) ?: row.str(SLOT_COLS[0].textEn)
+            else null
+
+            localizations += CardLocalizationRecord(cardId, locale, name, bodyText)
 
             // Emit only populated attack slots (non-blank name).
             // Prefer the locale-prefixed column (e.g. "FR Attack Name"); fall back to "EN Attack Name".

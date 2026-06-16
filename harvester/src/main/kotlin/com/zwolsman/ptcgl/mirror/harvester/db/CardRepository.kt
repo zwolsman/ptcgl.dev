@@ -74,16 +74,18 @@ class CardRepository(private val jdbc: JdbcTemplate) {
     fun upsertLocalizations(rows: List<CardLocalizationRecord>) {
         if (rows.isEmpty()) return
         val sql = """
-            INSERT INTO card_localization (card_id, locale, name)
-            VALUES (?, ?, ?)
+            INSERT INTO card_localization (card_id, locale, name, text)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT (card_id, locale) DO UPDATE SET
-                name = EXCLUDED.name
+                name = EXCLUDED.name,
+                text = EXCLUDED.text
         """.trimIndent()
         jdbc.batchUpdate(sql, object : BatchPreparedStatementSetter {
             override fun setValues(ps: PreparedStatement, i: Int) {
                 ps.setString(1, rows[i].cardId)
                 ps.setString(2, rows[i].locale)
                 ps.setString(3, rows[i].name)
+                ps.setString(4, rows[i].text)
             }
             override fun getBatchSize() = rows.size
         })

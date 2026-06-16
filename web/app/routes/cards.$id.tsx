@@ -179,6 +179,15 @@ export default function CardDetail({
               </div>
             )}
 
+            {/* Card body text (trainer / energy / ability text) */}
+            {card.text && (
+              <div className="rounded-lg border bg-card p-3">
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  <AttackText text={card.text} />
+                </p>
+              </div>
+            )}
+
             {/* Attacks */}
             {card.attacks.length > 0 && (
               <div>

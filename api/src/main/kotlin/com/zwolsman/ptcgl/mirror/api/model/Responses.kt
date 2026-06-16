@@ -54,6 +54,8 @@ data class CardResponse(
     val hp: Int?,
     val types: List<String>,
     val evolvesFrom: String?,
+    /** Card effect text (trainer/energy rule text, Pokémon abilities). Null when absent. */
+    val text: String?,
     val retreat: Int?,
     val weakness: Weakness?,
     val resistance: Resistance?,

@@ -42,6 +42,7 @@ data class CardLocalizationRecord(
     val cardId: String,
     val locale: String,
     val name: String,
+    val text: String?,  // card effect body text (trainer/energy/ability); null for plain Pokémon
 )
 
 // Locale-invariant attack data (cost, damage are energy codes / numbers, stable across locales).

@@ -40,6 +40,7 @@ export interface Card {
   hp: number | null;
   types: string[];
   evolvesFrom: string | null;
+  text: string | null;
   retreat: number | null;
   weakness: { type: string; amount: string } | null;
   resistance: { type: string; amount: string } | null;

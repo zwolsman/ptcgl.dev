@@ -148,12 +148,14 @@ class CardQueryRepository(
         if (cards.isEmpty()) return emptyList()
         val ids = cards.map { it.id }
 
-        val names = queryByIds<Pair<String, String>>(
-            "SELECT card_id, name FROM card_localization WHERE locale = ? AND card_id = ANY(?)",
+        data class LocalizationRow(val cardId: String, val name: String?, val text: String?)
+        val localizations = queryByIds<LocalizationRow>(
+            "SELECT card_id, name, text FROM card_localization WHERE locale = ? AND card_id = ANY(?)",
             ids,
             locale,
-        ) { rs, _ -> rs.getString("card_id") to rs.getString("name") }
-            .toMap()
+        ) { rs, _ -> LocalizationRow(rs.getString("card_id"), rs.getString("name"), rs.getString("text")) }
+        val names = localizations.associate { it.cardId to it.name }
+        val bodyTexts = localizations.associate { it.cardId to it.text }
 
         val attacks = queryByIds<AttackRow>(
             """
@@ -289,6 +291,7 @@ class CardQueryRepository(
                 hp             = c.hp,
                 types          = c.types,
                 evolvesFrom    = c.evolvesFrom,
+                text           = bodyTexts[c.id],
                 retreat        = c.retreat,
                 weakness       = c.weaknessType?.let { Weakness(it, c.weaknessAmount ?: "") },
                 resistance     = c.resistanceType?.let { Resistance(it, c.resistanceAmount ?: "") },
