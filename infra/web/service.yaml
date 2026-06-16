@@ -1,11 +1,11 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: postgres
+  name: ptcgl-web
   namespace: ptcgl
 spec:
   selector:
-    app: postgres
+    app: ptcgl-web
   ports:
-    - port: 5432
-      targetPort: 5432
+    - port: 80
+      targetPort: 80

@@ -1,12 +1,22 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: ptcgl-mirror
+  name: ptcgl
   namespace: argocd
   annotations:
-    argocd-image-updater.argoproj.io/image-list: mirror=ghcr.io/zwolsman/ptcgl-mirror
-    argocd-image-updater.argoproj.io/mirror.update-strategy: digest
-    argocd-image-updater.argoproj.io/mirror.tag-override: latest
+    argocd-image-updater.argoproj.io/image-list: >-
+      sync=ghcr.io/zwolsman/ptcgl-sync,
+      api=ghcr.io/zwolsman/ptcgl-api,
+      web=ghcr.io/zwolsman/ptcgl-web,
+      assets=ghcr.io/zwolsman/ptcgl-assets
+    argocd-image-updater.argoproj.io/sync.update-strategy: digest
+    argocd-image-updater.argoproj.io/sync.tag-override: latest
+    argocd-image-updater.argoproj.io/api.update-strategy: digest
+    argocd-image-updater.argoproj.io/api.tag-override: latest
+    argocd-image-updater.argoproj.io/web.update-strategy: digest
+    argocd-image-updater.argoproj.io/web.tag-override: latest
+    argocd-image-updater.argoproj.io/assets.update-strategy: digest
+    argocd-image-updater.argoproj.io/assets.tag-override: latest
 spec:
   project: default
   source:

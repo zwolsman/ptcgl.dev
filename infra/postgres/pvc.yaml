@@ -2,7 +2,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: postgres-data
-  namespace: ptcgl-mirror
+  namespace: ptcgl
 spec:
   accessModes:
     - ReadWriteOnce

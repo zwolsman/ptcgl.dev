@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ptcgl-assets
+  namespace: ptcgl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ptcgl-assets
+  template:
+    metadata:
+      labels:
+        app: ptcgl-assets
+    spec:
+      containers:
+        - name: assets
+          image: ghcr.io/zwolsman/ptcgl-assets:latest
+          ports:
+            - containerPort: 80
+          envFrom:
+            - configMapRef:
+                name: assets-config
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "25m"
+            limits:
+              memory: "64Mi"

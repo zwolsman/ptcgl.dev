@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: assets-config
+  namespace: ptcgl
+data:
+  ASSET_S3_UPSTREAM: http://rustfs:9000/ptcgl-mirror

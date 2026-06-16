@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ptcgl-mirror-api
-  namespace: ptcgl-mirror
+  name: ptcgl-api
+  namespace: ptcgl
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ptcgl-mirror-api
+      app: ptcgl-api
   template:
     metadata:
       labels:
-        app: ptcgl-mirror-api
+        app: ptcgl-api
     spec:
       containers:
         - name: api
-          image: ghcr.io/zwolsman/ptcgl-mirror-api:latest
+          image: ghcr.io/zwolsman/ptcgl-api:latest
           ports:
             - containerPort: 8080
           envFrom:
