@@ -1,8 +1,8 @@
 spring:
   application:
-    name: ptcgl-mirror-api
+    name: ptcgl-api
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/ptcgl_mirror}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/ptcgl}
     username: ${SPRING_DATASOURCE_USERNAME:ptcgl}
     password: ${SPRING_DATASOURCE_PASSWORD:ptcgl}
   flyway:
@@ -23,4 +23,4 @@ server:
 
 mirror:
   api:
-    asset-base-url: ${MIRROR_API_ASSET_BASE_URL:http://localhost:9000/ptcgl-mirror}
+    asset-base-url: ${MIRROR_API_ASSET_BASE_URL:http://localhost:9000/ptcgl-dev}

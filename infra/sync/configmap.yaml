@@ -5,7 +5,7 @@ metadata:
   namespace: ptcgl
 data:
   SPRING_PROFILES_ACTIVE: kubernetes
-  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ptcgl_mirror
-  MIRROR_S3_BUCKET: ptcgl-mirror
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ptcgl
+  MIRROR_S3_BUCKET: ptcgl-dev
   MIRROR_S3_REGION: us-east-1
   MIRROR_S3_FORCE_PATH_STYLE: "false"

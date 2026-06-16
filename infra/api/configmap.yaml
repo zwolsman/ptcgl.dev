@@ -4,7 +4,7 @@ metadata:
   name: api-config
   namespace: ptcgl
 data:
-  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ptcgl_mirror
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ptcgl
   # Public base URL for asset images: {MIRROR_API_ASSET_BASE_URL}/{s3KeyDecoded}/{assetName}.png
   # For Rustfs/Minio with path-style: http://<host>:9000/ptcgl
   # For AWS S3: https://ptcgl.s3.amazonaws.com

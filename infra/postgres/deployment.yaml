@@ -20,7 +20,7 @@ spec:
           image: postgres:16
           env:
             - name: POSTGRES_DB
-              value: ptcgl_mirror
+              value: ptcgl
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
@@ -38,7 +38,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - exec pg_isready -U "$POSTGRES_USER" -d ptcgl_mirror -h 127.0.0.1
+                - exec pg_isready -U "$POSTGRES_USER" -d ptcgl -h 127.0.0.1
             initialDelaySeconds: 5
             periodSeconds: 5
           volumeMounts:

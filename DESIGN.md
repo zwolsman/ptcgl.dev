@@ -1,4 +1,4 @@
-# ptcgl-mirror — Design
+# ptcgl.dev — Design
 
 A standalone, resumable service that mirrors the Pokémon TCG Live ("Rainier") content
 delivery network into self-hosted storage: it authenticates, discovers the authoritative
@@ -77,7 +77,7 @@ are the foundation of the design; if they drift, the affected module is the blas
 ## 4. Architecture
 
 ```
-ptcgl-mirror/                       (Gradle multi-module; Kotlin + Spring Boot)
+ptcgl.dev/                          (Gradle multi-module; Kotlin + Spring Boot)
   unity/          Ported pure-Kotlin Unity decoder (UnityBundle, SerializedFile,
                   TypeTreeReader, Texture2DDecoder, Lz4/Bc, EndianBinaryReader).
                   Framework-free library module.

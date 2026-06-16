@@ -2,7 +2,7 @@ spring:
   autoconfigure:
     exclude: []
   datasource:
-    url: jdbc:postgresql://localhost:5432/ptcgl_mirror
+    url: jdbc:postgresql://localhost:5432/ptcgl
     username: ptcgl
     password: ptcgl
   flyway:
@@ -13,6 +13,6 @@ mirror:
     endpoint: http://localhost:9000
     access-key: rustfsadmin
     secret-key: rustfsadmin
-    bucket: ptcgl-mirror
+    bucket: ptcgl-dev
     region: us-east-1
     force-path-style: true

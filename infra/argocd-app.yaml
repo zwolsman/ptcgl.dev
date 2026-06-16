@@ -20,7 +20,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/zwolsman/ptcgl-mirror
+    repoURL: https://github.com/zwolsman/ptcgl.dev
     targetRevision: HEAD
     path: infra
   destination:

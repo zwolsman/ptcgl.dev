@@ -1,4 +1,4 @@
-# ptcgl-mirror
+# ptcgl.dev
 
 Harvests card data and image assets from the Pokémon TCG Live API and stores them in S3.
 
@@ -43,8 +43,8 @@ SPRING_PROFILES_ACTIVE=local ./gradlew :app:bootRun --args='--plan'
 
    ```bash
    kubectl create job seed-auth \
-     --from=cronjob/ptcgl-mirror \
-     -n ptcgl-mirror \
+     --from=cronjob/ptcgl-sync \
+     -n ptcgl \
      -- --login --refresh-token=<ory_rt_...token...>
    ```
 
@@ -60,8 +60,8 @@ If the refresh token is ever invalidated, run the same job again with a new toke
 
 ```bash
 kubectl create job reseed-auth-$(date +%s) \
-  --from=cronjob/ptcgl-mirror \
-  -n ptcgl-mirror \
+  --from=cronjob/ptcgl-sync \
+  -n ptcgl \
   -- --login --refresh-token=<new_ory_rt_token>
 ```
 
@@ -69,8 +69,8 @@ kubectl create job reseed-auth-$(date +%s) \
 
 ```bash
 kubectl create job manual-plan-$(date +%s) \
-  --from=cronjob/ptcgl-mirror \
-  -n ptcgl-mirror
+  --from=cronjob/ptcgl-sync \
+  -n ptcgl
 ```
 
 ### ArgoCD (automatic image updates)
@@ -82,7 +82,7 @@ kubectl apply -f infra/argocd-app.yaml
 ```
 
 The Application watches the `infra/` directory in git and re-deploys whenever the
-`ghcr.io/zwolsman/ptcgl-mirror:latest` digest changes (i.e. on every push to `main`).
+`ghcr.io/zwolsman/ptcgl-sync:latest` digest changes (i.e. on every push to `main`).
 
 ## Configuration reference
 

@@ -5,13 +5,13 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: ptcgl_mirror
+      POSTGRES_DB: ptcgl
       POSTGRES_USER: ptcgl
       POSTGRES_PASSWORD: ptcgl
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ptcgl -d ptcgl_mirror"]
+      test: ["CMD-SHELL", "pg_isready -U ptcgl -d ptcgl"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -47,7 +47,7 @@ services:
     ports:
       - "9090:80"
     environment:
-      ASSET_S3_UPSTREAM: http://rustfs:9000/ptcgl-mirror
+      ASSET_S3_UPSTREAM: http://rustfs:9000/ptcgl-dev
     depends_on:
       - rustfs
 

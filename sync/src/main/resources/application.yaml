@@ -11,7 +11,7 @@ mirror:
     endpoint: ${MIRROR_S3_ENDPOINT:https://s3.amazonaws.com}
     access-key: ${MIRROR_S3_ACCESS_KEY:}
     secret-key: ${MIRROR_S3_SECRET_KEY:}
-    bucket: ptcgl-mirror
+    bucket: ptcgl-dev
     region: us-east-1
     force-path-style: false
 
