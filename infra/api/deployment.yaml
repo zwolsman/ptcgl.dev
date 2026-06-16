@@ -18,6 +18,7 @@ spec:
           image: ghcr.io/zwolsman/ptcgl-api:latest
           ports:
             - containerPort: 8080
+              name: http
           envFrom:
             - configMapRef:
                 name: api-config

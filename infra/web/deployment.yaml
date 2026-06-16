@@ -17,7 +17,8 @@ spec:
         - name: web
           image: ghcr.io/zwolsman/ptcgl-web:latest
           ports:
-            - containerPort: 80
+            - containerPort: 3000
+              name: http
           resources:
             requests:
               memory: "64Mi"
