@@ -3,7 +3,6 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
-  - postgres
   - sync
   - api
   - web
