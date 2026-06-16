@@ -1,0 +1,7 @@
+server {
+    listen 80;
+    location / {
+        proxy_pass ${ASSET_S3_UPSTREAM}/;
+        proxy_set_header Host $http_host;
+    }
+}

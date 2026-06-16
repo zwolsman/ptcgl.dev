@@ -17,10 +17,14 @@ jobs:
     strategy:
       matrix:
         include:
-          - image: ptcgl-mirror
-            dockerfile: Dockerfile
-          - image: ptcgl-mirror-api
-            dockerfile: Dockerfile.api
+          - image: ptcgl-sync
+            dockerfile: docker/sync.Dockerfile
+          - image: ptcgl-api
+            dockerfile: docker/api.Dockerfile
+          - image: ptcgl-web
+            dockerfile: docker/web.Dockerfile
+          - image: ptcgl-assets
+            dockerfile: docker/assets.Dockerfile
 
     steps:
       - name: Checkout
