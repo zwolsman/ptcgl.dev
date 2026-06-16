@@ -40,6 +40,17 @@ services:
     volumes:
       - rustfs_data:/data/rustfs
 
+  assets:
+    build:
+      context: .
+      dockerfile: docker/assets.Dockerfile
+    ports:
+      - "9090:80"
+    environment:
+      ASSET_S3_UPSTREAM: http://rustfs:9000/ptcgl-mirror
+    depends_on:
+      - rustfs
+
 volumes:
   postgres_data:
   rustfs_data:
