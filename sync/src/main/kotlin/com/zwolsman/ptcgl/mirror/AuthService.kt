@@ -22,16 +22,16 @@ class AuthService(
 ) {
 
     /**
-     * Returns a live studio session, refreshing the PTCS access token if it has expired.
+     * Returns a live studio session, refreshing the PTCS access token if needed.
      *
-     * Fast path (token still valid): reads auth_state without locking and skips the
-     * OAuth2 refresh endpoint entirely.
+     * Fast path (token still valid by time): skips the OAuth2 refresh endpoint.
      *
      * Slow path (token expired or absent): acquires a SELECT … FOR UPDATE lock to
      * prevent concurrent runs from double-spending the single-use refresh token,
-     * re-checks expiry after the lock, calls the refresh endpoint on HTTP 200, writes
-     * both the new access token and the new refresh token in the same transaction,
-     * then COMMITs before proceeding.
+     * re-checks expiry after the lock, then refreshes.
+     *
+     * Recovery path (token time-valid but server-side invalidated — 424 from studio):
+     * forces a PTCS token refresh and retries the studio auth once.
      */
     @Transactional
     fun acquireStudioSession(): StudioSession {
@@ -43,28 +43,35 @@ class AuthService(
             state.accessToken!!
         } else {
             log.info("PTCS access token expired or absent — acquiring lock and refreshing")
-            val locked = authStateRepo.readForUpdate()
-
-            if (locked.isAccessTokenValid()) {
-                log.info("Access token was refreshed by a concurrent run; reusing it")
-                locked.accessToken!!
-            } else {
-                log.info("Calling PTCS refresh endpoint…")
-                val tokens = ptcsTokenClient.refresh(locked.refreshToken, clientId)
-                log.info("Refresh successful; new access token expires {}", tokens.expiresAt)
-
-                authStateRepo.upsert(locked.copy(
-                    accessToken           = tokens.accessToken,
-                    accessTokenExpiresAt  = tokens.expiresAt,
-                    refreshToken          = tokens.refreshToken,
-                    refreshTokenUpdatedAt = Instant.now(),
-                ))
-
-                tokens.accessToken
-            }
+            doRefresh(force = false)
         }
 
-        return authClient.authenticate(accessToken)
+        return try {
+            authClient.authenticate(accessToken)
+        } catch (e: IllegalStateException) {
+            if ("424" !in e.message.orEmpty()) throw e
+            log.warn("Studio auth rejected token (server-side invalidation 424); forcing PTCS refresh and retrying")
+            val refreshed = doRefresh(force = true)
+            authClient.authenticate(refreshed)
+        }
+    }
+
+    private fun doRefresh(force: Boolean): String {
+        val locked = authStateRepo.readForUpdate()
+        if (!force && locked.isAccessTokenValid()) {
+            log.info("Access token was refreshed by a concurrent run; reusing it")
+            return locked.accessToken!!
+        }
+        log.info("Calling PTCS refresh endpoint…")
+        val tokens = ptcsTokenClient.refresh(locked.refreshToken, clientId)
+        log.info("Refresh successful; new access token expires {}", tokens.expiresAt)
+        authStateRepo.upsert(locked.copy(
+            accessToken           = tokens.accessToken,
+            accessTokenExpiresAt  = tokens.expiresAt,
+            refreshToken          = tokens.refreshToken,
+            refreshTokenUpdatedAt = Instant.now(),
+        ))
+        return tokens.accessToken
     }
 
     private fun AuthState.isAccessTokenValid(): Boolean {
