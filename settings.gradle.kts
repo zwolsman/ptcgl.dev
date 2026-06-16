@@ -1,2 +1,2 @@
 rootProject.name = "mirror"
-include("unity", "rainier", "harvester", "app", "api")
+include("unity", "rainier", "harvester", "sync", "api")
