@@ -1,7 +1,40 @@
+import * as React from "react"
 import { Link } from "react-router"
 import { fetchCard, type Card } from "~/api/client"
 import { Badge } from "~/components/ui/badge"
 import type { LoaderFunctionArgs } from "react-router"
+
+const SPRITE_RE = /<sprite name="([^"]+)"[^>]*>/g
+
+function AttackText({ text }: { text: string }) {
+  const parts: React.ReactNode[] = []
+  let last = 0
+  let match: RegExpExecArray | null
+
+  SPRITE_RE.lastIndex = 0
+  while ((match = SPRITE_RE.exec(text)) !== null) {
+    if (match.index > last) {
+      const chunk = text.slice(last, match.index)
+      parts.push(<span key={last} dangerouslySetInnerHTML={{ __html: chunk }} />)
+    }
+    const name = match[1]
+    parts.push(
+      <span
+        key={match.index}
+        className="inline-flex items-center px-1 py-px rounded text-[10px] font-medium bg-secondary text-secondary-foreground mx-0.5 align-middle"
+      >
+        {name.charAt(0).toUpperCase() + name.slice(1).toLowerCase()}
+      </span>,
+    )
+    last = match.index + match[0].length
+  }
+
+  if (last < text.length) {
+    parts.push(<span key={last} dangerouslySetInnerHTML={{ __html: text.slice(last) }} />)
+  }
+
+  return <>{parts}</>
+}
 
 export function meta({ data }: { data: Card | undefined }) {
   return [{ title: `${data?.name ?? "Card"} | PTCGL Mirror` }]
@@ -158,7 +191,7 @@ export default function CardDetail({
                       </div>
                       {attack.text && (
                         <p className="text-sm text-muted-foreground leading-relaxed">
-                          {attack.text}
+                          <AttackText text={attack.text} />
                         </p>
                       )}
                     </div>
