@@ -44,8 +44,9 @@ class PlanService(
     /**
      * @param setFilter  if non-null, only process this set's card database (e.g. "sv8")
      * @param latestOnly if true, resolve the set with the most recent release date and process only that one
+     * @param force      if true, reprocess card databases even when the revision is unchanged
      */
-    fun run(locale: String = "en", setFilter: String? = null, latestOnly: Boolean = false) {
+    fun run(locale: String = "en", setFilter: String? = null, latestOnly: Boolean = false, force: Boolean = false) {
         log.info("Phase A starting (locale={}, setFilter={}, latestOnly={})", locale, setFilter, latestOnly)
         assetRepo.reclaimExpiredLeases()
 
@@ -127,7 +128,7 @@ class PlanService(
             for (template in templates) {
                 val docId = "card-database-${template.replace("{0}", locale)}_0.0"
                 try {
-                    processCardDatabase(docId, setCode, locale)
+                    processCardDatabase(docId, setCode, locale, force)
                 } catch (e: Exception) {
                     log.warn("Skipping card-database {}: {}", docId, e.message)
                 }
@@ -190,7 +191,7 @@ class PlanService(
         log.info("Phase C complete. {} / {} bundles unpacked.", decoded, undecoded)
     }
 
-    private fun processCardDatabase(docId: String, setCode: String, locale: String) {
+    private fun processCardDatabase(docId: String, setCode: String, locale: String, force: Boolean = false) {
         val doc = try {
             configClient.getMultiple(docId).first()
         } catch (e: Exception) {
@@ -198,7 +199,7 @@ class PlanService(
             return
         }
 
-        if (revisionRepo.isUpToDate(docId, doc.revision)) {
+        if (!force && revisionRepo.isUpToDate(docId, doc.revision)) {
             log.debug("Card DB {} unchanged, skipping", docId)
             return
         }
