@@ -39,10 +39,14 @@ export default function CardDetail({
               <img
                 src={image}
                 alt={card.name ?? card.id}
-                className="w-full rounded-2xl shadow-lg"
+                className="w-full object-cover shadow-lg"
+                style={{ aspectRatio: "0.718", borderRadius: "4.55% / 3.5%" }}
               />
             ) : (
-              <div className="w-full aspect-[2/3] bg-muted rounded-2xl flex items-center justify-center">
+              <div
+                className="w-full bg-muted flex items-center justify-center"
+                style={{ aspectRatio: "0.718", borderRadius: "4.55% / 3.5%" }}
+              >
                 <span className="text-muted-foreground text-sm">No image</span>
               </div>
             )}
@@ -65,7 +69,7 @@ export default function CardDetail({
                 <Badge variant="outline">Mark {card.regulationMark}</Badge>
               )}
               {card.types.map((t) => (
-                <Badge key={t}>{t}</Badge>
+                <Badge key={t}>{t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()}</Badge>
               ))}
             </div>
 
@@ -133,17 +137,25 @@ export default function CardDetail({
                   {card.attacks.map((attack) => (
                     <div
                       key={attack.slot}
-                      className="rounded-lg border bg-card p-3 space-y-1"
+                      className="rounded-lg border bg-card p-3 space-y-1.5"
                     >
-                      <div className="flex items-center justify-between">
-                        <p className="font-semibold text-sm">{attack.name}</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {attack.cost && (
+                            <span className="text-xs text-muted-foreground font-mono shrink-0">
+                              {attack.cost}
+                            </span>
+                          )}
+                          <p className="font-semibold text-sm truncate">
+                            {attack.name ?? `Attack ${attack.slot}`}
+                          </p>
+                        </div>
                         {attack.damage && (
-                          <p className="font-bold text-base tabular-nums">{attack.damage}</p>
+                          <p className="font-bold text-base tabular-nums shrink-0">
+                            {attack.damage}
+                          </p>
                         )}
                       </div>
-                      {attack.cost && (
-                        <p className="text-xs text-muted-foreground">Cost: {attack.cost}</p>
-                      )}
                       {attack.text && (
                         <p className="text-sm text-muted-foreground leading-relaxed">
                           {attack.text}
@@ -163,15 +175,19 @@ export default function CardDetail({
                 </h2>
                 <div className="flex gap-2 overflow-x-auto pb-2">
                   {card.otherPrints.map((p) => (
-                    <Link key={p.id} to={`/cards/${p.id}`} className="flex-none">
+                    <Link key={p.id} to={`/cards/${p.id}`} className="flex-none w-14">
                       {p.thumb ? (
                         <img
                           src={p.thumb}
                           alt=""
-                          className="h-20 rounded-lg border hover:border-primary/40 transition-colors"
+                          className="w-full object-cover border hover:border-primary/40 transition-colors"
+                          style={{ aspectRatio: "0.718", borderRadius: "4.55% / 3.5%" }}
                         />
                       ) : (
-                        <div className="h-20 w-14 rounded-lg border bg-muted flex items-center justify-center">
+                        <div
+                          className="w-full border bg-muted flex items-center justify-center"
+                          style={{ aspectRatio: "0.718", borderRadius: "4.55% / 3.5%" }}
+                        >
                           <span className="text-[10px] text-muted-foreground">{p.id.slice(-4)}</span>
                         </div>
                       )}
