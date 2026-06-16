@@ -53,8 +53,6 @@ export default function CardDetail({
   const image = card.assets.hires ?? card.assets.thumb
 
   const [overlayOpen, setOverlayOpen] = React.useState(false)
-  const overlayCardRef = React.useRef<HTMLImageElement>(null)
-
   React.useEffect(() => {
     if (!overlayOpen) return
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOverlayOpen(false) }
@@ -66,22 +64,6 @@ export default function CardDetail({
     }
   }, [overlayOpen])
 
-  function onCardMouseMove(e: React.MouseEvent<HTMLImageElement>) {
-    const el = overlayCardRef.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    const x = (e.clientX - rect.left) / rect.width - 0.5
-    const y = (e.clientY - rect.top) / rect.height - 0.5
-    el.style.transition = "transform 0.08s ease"
-    el.style.transform = `perspective(800px) rotateY(${x * 22}deg) rotateX(${-y * 16}deg)`
-  }
-
-  function onCardMouseLeave() {
-    const el = overlayCardRef.current
-    if (!el) return
-    el.style.transition = "transform 0.6s ease"
-    el.style.transform = "perspective(800px) rotateY(0deg) rotateX(0deg)"
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -277,21 +259,15 @@ export default function CardDetail({
           onClick={() => setOverlayOpen(false)}
         >
           <img
-            ref={overlayCardRef}
             src={card.assets.hires ?? card.assets.thumb ?? ""}
             alt={card.name ?? card.id}
-            className="max-h-[88vh] w-auto cursor-default"
+            className="max-h-[88vh] w-auto object-cover cursor-default"
             style={{
               aspectRatio: "0.718",
               borderRadius: "4.55% / 3.5%",
               boxShadow: "0 30px 80px rgba(0,0,0,0.6)",
-              animation: "card-swirl-in 0.7s ease-out forwards",
-              willChange: "transform",
-              transformStyle: "preserve-3d",
             }}
             onClick={(e) => e.stopPropagation()}
-            onMouseMove={onCardMouseMove}
-            onMouseLeave={onCardMouseLeave}
           />
         </div>
       )}

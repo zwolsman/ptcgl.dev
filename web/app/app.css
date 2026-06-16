@@ -67,12 +67,6 @@
   to   { opacity: 1; }
 }
 
-@keyframes card-swirl-in {
-  0%   { opacity: 0; transform: rotateZ(-360deg) scale(0.2); }
-  60%  { opacity: 1; transform: rotateZ(14deg)   scale(1.06); }
-  80%  {             transform: rotateZ(-4deg)   scale(0.97); }
-  100% { opacity: 1; transform: rotateZ(0deg)    scale(1); }
-}
 
 *,
 *::before,
