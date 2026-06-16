@@ -167,7 +167,7 @@ export default function CardDetail({
                       Evolves From
                     </p>
                     <Link
-                      to={`/search?name=${encodeURIComponent(card.evolvesFrom)}`}
+                      to={`/search?name=${encodeURIComponent(card.evolvesFrom)}&exact=true`}
                       className="font-semibold hover:underline text-primary"
                     >
                       {card.evolvesFrom}

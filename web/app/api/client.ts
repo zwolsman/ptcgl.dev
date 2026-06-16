@@ -102,6 +102,7 @@ export async function fetchCard(id: string, locale = "en"): Promise<Card> {
   return (await apiFetch(`/v1/cards/${id}?locale=${locale}`)).json();
 }
 
-export async function searchCards(name: string, locale = "en"): Promise<CardSummary[]> {
-  return (await apiFetch(`/v1/cards?name=${encodeURIComponent(name)}&locale=${locale}`)).json();
+export async function searchCards(name: string, locale = "en", exact = false): Promise<CardSummary[]> {
+  const params = new URLSearchParams({ name, locale, ...(exact ? { exact: "true" } : {}) });
+  return (await apiFetch(`/v1/cards?${params}`)).json();
 }

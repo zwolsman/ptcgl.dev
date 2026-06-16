@@ -8,8 +8,10 @@ export function meta({ data }: { data: { name: string; cards: CardSummary[] } | 
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const name = new URL(request.url).searchParams.get("name") ?? ""
-  const cards = name.trim() ? await searchCards(name) : []
+  const params = new URL(request.url).searchParams
+  const name = params.get("name") ?? ""
+  const exact = params.get("exact") === "true"
+  const cards = name.trim() ? await searchCards(name, "en", exact) : []
   return { name, cards }
 }
 

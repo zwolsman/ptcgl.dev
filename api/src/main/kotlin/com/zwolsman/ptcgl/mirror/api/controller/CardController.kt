@@ -19,8 +19,9 @@ class CardController(private val cardRepo: CardQueryRepository) {
     fun searchCards(
         @RequestParam name: String,
         @RequestParam(defaultValue = "en") locale: String,
+        @RequestParam(defaultValue = "false") exact: Boolean,
     ): List<CardSummaryResponse> =
-        cardRepo.findByName(name, locale)
+        cardRepo.findByName(name, locale, exact)
 
     @GetMapping("/{id}")
     fun getCard(

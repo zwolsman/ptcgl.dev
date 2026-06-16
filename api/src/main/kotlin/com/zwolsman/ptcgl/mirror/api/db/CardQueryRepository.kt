@@ -19,8 +19,10 @@ class CardQueryRepository(
     @param:Value("\${mirror.api.asset-base-url}") private val assetBaseUrl: String,
 ) {
 
-    fun findByName(name: String, locale: String): List<CardSummaryResponse> {
+    fun findByName(name: String, locale: String, exact: Boolean = false): List<CardSummaryResponse> {
         if (name.isBlank()) return emptyList()
+        // ILIKE without wildcards = case-insensitive exact match; with % = partial match
+        val param = if (exact) name else "%$name%"
         val rows = jdbc.query(
             """
             SELECT c.id, c.set_id, c.number, s.main_set_count, cl.name
@@ -41,7 +43,7 @@ class CardQueryRepository(
                 )
             },
             locale,
-            "%$name%",
+            param,
         )
         if (rows.isEmpty()) return emptyList()
 
