@@ -328,7 +328,7 @@ class CardQueryRepository(
     }
 
     private fun assetUrl(assetName: String, s3KeyDecoded: String, textureName: String? = null) =
-        "$assetBaseUrl/$s3KeyDecoded/${textureName ?: assetName}.png"
+        "$assetBaseUrl/${s3KeyDecoded.removePrefix("decoded/")}/${textureName ?: assetName}.png"
 
     private val camelSplit = Regex("[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
     private fun camelToSpaced(s: String) = camelSplit.findAll(s).joinToString(" ") { it.value }
