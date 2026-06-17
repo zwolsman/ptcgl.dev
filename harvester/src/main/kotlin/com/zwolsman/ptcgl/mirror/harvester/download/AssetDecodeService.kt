@@ -15,6 +15,8 @@ import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 
+const val DECODED_S3_PREFIX = "decoded/"
+
 private val log = LoggerFactory.getLogger(AssetDecodeService::class.java)
 private val mapper = jacksonObjectMapper()
 
@@ -54,7 +56,7 @@ class AssetDecodeService(
                     val rawBytes = s3.getObjectAsBytes { it.bucket(bucket).key(asset.s3KeyRaw) }.asByteArray()
                     val bundleFiles = UnityBundle.parse(rawBytes)
 
-                    val decodedPrefix = "decoded/${asset.s3KeyRaw}"
+                    val decodedPrefix = "$DECODED_S3_PREFIX${asset.s3KeyRaw}"
                     val result = extractAndUpload(bundleFiles, decodedPrefix)
 
                     if (result.extractedCount > 0) {

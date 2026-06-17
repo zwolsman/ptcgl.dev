@@ -87,7 +87,7 @@ class SetQueryRepository(
             mainSetCount   = getInt("main_set_count").takeUnless { wasNull() },
             masterSetCount = getInt("master_set_count").takeUnless { wasNull() },
             logo           = if (logoDecoded != null && logoTexture != null)
-                                 "$assetBaseUrl/${logoDecoded.removePrefix("decoded/")}/$logoTexture.png"
+                                 "$assetBaseUrl/${logoDecoded.removePrefix(DECODED_S3_PREFIX)}/$logoTexture.png"
                              else null,
         )
     }

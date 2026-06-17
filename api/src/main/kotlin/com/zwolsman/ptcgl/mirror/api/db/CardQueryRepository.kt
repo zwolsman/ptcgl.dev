@@ -13,6 +13,8 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
 import java.sql.ResultSet
 
+const val DECODED_S3_PREFIX = "decoded/"
+
 @Repository
 class CardQueryRepository(
     private val jdbc: JdbcTemplate,
@@ -328,7 +330,7 @@ class CardQueryRepository(
     }
 
     private fun assetUrl(assetName: String, s3KeyDecoded: String, textureName: String? = null) =
-        "$assetBaseUrl/${s3KeyDecoded.removePrefix("decoded/")}/${textureName ?: assetName}.png"
+        "$assetBaseUrl/${s3KeyDecoded.removePrefix(DECODED_S3_PREFIX)}/${textureName ?: assetName}.png"
 
     private val camelSplit = Regex("[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
     private fun camelToSpaced(s: String) = camelSplit.findAll(s).joinToString(" ") { it.value }
