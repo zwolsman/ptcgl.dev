@@ -67,10 +67,7 @@ export interface CardAssets {
 }
 
 function apiBase(): string {
-  if (typeof window === "undefined") {
-    return process.env.API_BASE_URL ?? "http://localhost:8080";
-  }
-  return "/api";
+  return process.env.API_BASE_URL ?? "http://localhost:8080"
 }
 
 async function apiFetch(path: string): Promise<Response> {
