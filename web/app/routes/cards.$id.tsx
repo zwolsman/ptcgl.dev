@@ -1,6 +1,6 @@
 import * as React from "react"
 import { Link } from "react-router"
-import { fetchCard, type Card } from "~/api/client"
+import { fetchCard, type Card } from "~/api/client.server"
 import { getLocale } from "~/lib/locale"
 import { Badge } from "~/components/ui/badge"
 import { PageHeader } from "~/components/page-header"

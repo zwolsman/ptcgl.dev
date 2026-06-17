@@ -1,5 +1,5 @@
 import { Link } from "react-router"
-import { fetchSeries, fetchSets, type Set as PokemonSet } from "~/api/client"
+import { fetchSeries, fetchSets, type Set as PokemonSet } from "~/api/client.server"
 import { getLocale } from "~/lib/locale"
 import { PageHeader } from "~/components/page-header"
 import type { LoaderFunctionArgs } from "react-router"
