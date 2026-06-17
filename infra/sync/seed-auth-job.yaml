@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ptcgl-seed-auth
+  namespace: ptcgl
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: sync
+          image: ghcr.io/zwolsman/ptcgl-sync:latest
+          args: ["--login", "--refresh-token=REPLACE_ME"]
+          envFrom:
+            - configMapRef:
+                name: sync-config
+            - secretRef:
+                name: sync-credentials

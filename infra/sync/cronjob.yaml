@@ -17,8 +17,7 @@ spec:
           containers:
             - name: sync
               image: ghcr.io/zwolsman/ptcgl-sync:latest
-              # Default CMD is --sync; override args for one-off operations:
-              #   kubectl create job --from=cronjob/ptcgl-sync login -- --login --refresh-token=<token>
+              # Default CMD is --sync; for --login use infra/sync/seed-auth-job.yaml
               envFrom:
                 - configMapRef:
                     name: sync-config

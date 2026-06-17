@@ -66,11 +66,10 @@ docker run --rm -v $(pwd)/web:/app -w /app node:lts-alpine npm install
 
 4. Seed `auth_state` with a PTCS refresh token (required before the CronJob can run):
 
+   Edit `infra/sync/seed-auth-job.yaml` and replace `REPLACE_ME` with the token, then apply:
+
    ```bash
-   kubectl create job seed-auth \
-     --from=cronjob/ptcgl-sync \
-     -n ptcgl \
-     -- --login --refresh-token=<ory_rt_...token...>
+   kubectl apply -f infra/sync/seed-auth-job.yaml
    ```
 
    The job inserts the refresh token into the DB. On the next scheduled run the CronJob
@@ -81,11 +80,12 @@ docker run --rm -v $(pwd)/web:/app -w /app node:lts-alpine npm install
 
 ### Re-seeding after token expiry
 
+Edit the token in `infra/sync/seed-auth-job.yaml` and re-apply. The job has `ttlSecondsAfterFinished: 300`
+so Kubernetes cleans it up automatically; if the name conflicts, delete it first:
+
 ```bash
-kubectl create job reseed-auth-$(date +%s) \
-  --from=cronjob/ptcgl-sync \
-  -n ptcgl \
-  -- --login --refresh-token=<new_ory_rt_token>
+kubectl delete job ptcgl-seed-auth -n ptcgl --ignore-not-found
+kubectl apply -f infra/sync/seed-auth-job.yaml
 ```
 
 ### Manual sync run
