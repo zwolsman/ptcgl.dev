@@ -141,25 +141,30 @@ class CardRepository(private val jdbc: JdbcTemplate) {
         })
     }
 
-    /** Returns unique (set_id, number) pairs for cards in the given sets, or all sets if null. */
-    fun findDistinctCardKeys(setIds: List<String>? = null): List<Pair<String, String>> {
+    /**
+     * Returns distinct card IDs for cards in the given sets (matched by card ID prefix, e.g. "svalt"),
+     * or all card IDs if null.
+     *
+     * Filtering by ID prefix instead of set_id ensures alt-art sets (svalt, mealt, …) are correctly
+     * scoped: those cards carry the original set's set_id in the DB but their ID prefix matches the
+     * alt set name used on the CDN.
+     */
+    fun findDistinctCardKeys(setIds: List<String>? = null): List<String> {
         if (setIds.isNullOrEmpty()) {
-            return jdbc.query("SELECT DISTINCT set_id, number FROM card ORDER BY set_id, number") { rs, _ ->
-                rs.getString("set_id") to rs.getString("number")
-            }
+            return jdbc.query("SELECT id FROM card ORDER BY id") { rs, _ -> rs.getString("id") }
         }
         return jdbc.execute(ConnectionCallback { conn ->
             val arr = conn.createArrayOf("text", setIds.toTypedArray())
             conn.prepareStatement(
-                "SELECT DISTINCT set_id, number FROM card WHERE set_id = ANY(?) ORDER BY set_id, number"
+                "SELECT id FROM card WHERE split_part(id, '_', 1) = ANY(?) ORDER BY id"
             ).use { ps ->
                 ps.setArray(1, arr)
                 ps.executeQuery().use { rs ->
-                    val result = mutableListOf<Pair<String, String>>()
-                    while (rs.next()) result += rs.getString("set_id") to rs.getString("number")
+                    val result = mutableListOf<String>()
+                    while (rs.next()) result += rs.getString("id")
                     result
                 }
             }
-        })!!
+        })
     }
 }

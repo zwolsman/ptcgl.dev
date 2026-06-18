@@ -222,23 +222,45 @@ class PlanService(
      * Derives the complete set of asset names we care about from the cards and sets already in the DB.
      *
      * Card assets: {set_id}_{locale}_{number}        (HIRES)
-     *              {set_id}_{locale}_{number}_t       (THUMB)
-     * Set assets:  expansion_{set_id}_{locale}        (set logo/expansion image)
+     *              {set_code}_{locale}_{padded_number}_t   (THUMB)
+     * Set assets:  expansion_{set_id}_{locale}             (set logo/expansion image)
+     *
+     * Both set_code and padded_number are derived from the card ID, not from the DB set_id/number
+     * columns. This correctly handles alt-art sets (e.g. svalt_1 → svalt_en_001) whose DB set_id
+     * points to the original set (sv1) but whose CDN bundle name uses the alt set prefix.
      */
     private fun deriveExpectedAssetNames(
-        cardKeys: List<Pair<String, String>>,
+        cardIds: List<String>,
         setIds: List<String>,
         locale: String,
     ): Set<String> {
         val names = mutableSetOf<String>()
-        for ((setId, number) in cardKeys) {
-            names += "${setId}_${locale}_${number}"
-            names += "${setId}_${locale}_${number}_t"
+        for (cardId in cardIds) {
+            val (setCode, paddedNumber) = bundleKey(cardId) ?: continue
+            names += "${setCode}_${locale}_${paddedNumber}"
+            names += "${setCode}_${locale}_${paddedNumber}_t"
         }
         for (setId in setIds) {
             names += "expansion_${setId}_${locale}"
         }
         return names
+    }
+
+    /**
+     * Derives (set_code, zero-padded-number) from a card ID for CDN bundle name construction.
+     *
+     * Examples:
+     *   svalt_1     → (svalt, 001)
+     *   me4_10_ph   → (me4,   010)
+     *   sv3-5_133   → (sv3-5, 133)
+     */
+    private fun bundleKey(cardId: String): Pair<String, String>? {
+        val sep = cardId.indexOf('_')
+        if (sep < 0) return null
+        val setCode = cardId.substring(0, sep)
+        val rest    = cardId.substring(sep + 1)
+        val number  = rest.substringBefore('_').toIntOrNull() ?: return null
+        return setCode to "%03d".format(number)
     }
 
     private fun processBucketManifest(
