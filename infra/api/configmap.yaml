@@ -9,3 +9,4 @@ data:
   # For Rustfs/Minio with path-style: http://<host>:9000/ptcgl
   # For AWS S3: https://ptcgl.s3.amazonaws.com
   MIRROR_API_ASSET_BASE_URL: https://changeme.example.com/ptcgl
+  MIRROR_API_DECODED_S3_PREFIX: "decoded/"

@@ -24,3 +24,4 @@ server:
 mirror:
   api:
     asset-base-url: ${MIRROR_API_ASSET_BASE_URL:http://localhost:9000/ptcgl-dev}
+    decoded-s3-prefix: ${MIRROR_API_DECODED_S3_PREFIX:}

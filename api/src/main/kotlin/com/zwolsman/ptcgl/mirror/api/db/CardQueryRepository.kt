@@ -13,12 +13,11 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
 import java.sql.ResultSet
 
-const val DECODED_S3_PREFIX = "decoded/"
-
 @Repository
 class CardQueryRepository(
     private val jdbc: JdbcTemplate,
     @param:Value("\${mirror.api.asset-base-url}") private val assetBaseUrl: String,
+    @param:Value("\${mirror.api.decoded-s3-prefix}") private val decodedS3Prefix: String,
 ) {
 
     fun findByName(name: String, locale: String, exact: Boolean = false): List<CardSummaryResponse> {
@@ -198,8 +197,8 @@ class CardQueryRepository(
         }
 
         // Collect all asset names we need: thumb for everyone; hires+manifest for detail
-        val thumbNames  = cards.associate { cardAssetBaseName(it.id, locale) + "_t" to it.id }
-        val hiresNames  = if (thumbOnly) emptyMap() else cards.associate { cardAssetBaseName(it.id, locale) to it.id }
+        val thumbNames: Map<String, String> = cards.associate { c -> cardAssetBaseName(c.id, locale) + "_t" to c.id }
+        val hiresNames: Map<String, String> = if (thumbOnly) emptyMap() else cards.associate { c -> cardAssetBaseName(c.id, locale) to c.id }
 
         // Gather otherPrint sibling IDs across all cards for a bulk thumb lookup.
         // Derive thumb asset names directly from card IDs — no extra DB query needed.
@@ -318,7 +317,7 @@ class CardQueryRepository(
     }
 
     private fun assetUrl(assetName: String, s3KeyDecoded: String, textureName: String? = null) =
-        "$assetBaseUrl/${s3KeyDecoded.removePrefix(DECODED_S3_PREFIX)}/${textureName ?: assetName}.png"
+        "$assetBaseUrl/${s3KeyDecoded.removePrefix(decodedS3Prefix)}/${textureName ?: assetName}.png"
 
     /**
      * Derives the CDN/S3 asset base name from a card ID.

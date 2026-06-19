@@ -12,6 +12,7 @@ import java.time.LocalDate
 class SetQueryRepository(
     private val jdbc: JdbcTemplate,
     @param:Value("\${mirror.api.asset-base-url}") private val assetBaseUrl: String,
+    @param:Value("\${mirror.api.decoded-s3-prefix}") private val decodedS3Prefix: String,
 ) {
 
     fun findAllSeries(): List<SeriesResponse> {
@@ -87,7 +88,7 @@ class SetQueryRepository(
             mainSetCount   = getInt("main_set_count").takeUnless { wasNull() },
             masterSetCount = getInt("master_set_count").takeUnless { wasNull() },
             logo           = if (logoDecoded != null && logoTexture != null)
-                                 "$assetBaseUrl/${logoDecoded.removePrefix(DECODED_S3_PREFIX)}/$logoTexture.png"
+                                 "$assetBaseUrl/${logoDecoded.removePrefix(decodedS3Prefix)}/$logoTexture.png"
                              else null,
         )
     }
