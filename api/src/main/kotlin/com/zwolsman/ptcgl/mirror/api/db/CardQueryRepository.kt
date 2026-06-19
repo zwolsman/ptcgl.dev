@@ -5,6 +5,7 @@ import com.zwolsman.ptcgl.mirror.api.model.CardAssets
 import com.zwolsman.ptcgl.mirror.api.model.CardResponse
 import com.zwolsman.ptcgl.mirror.api.model.CardSummaryResponse
 import com.zwolsman.ptcgl.mirror.api.model.OtherPrint
+import com.zwolsman.ptcgl.mirror.api.model.Variant
 import com.zwolsman.ptcgl.mirror.api.model.Resistance
 import com.zwolsman.ptcgl.mirror.api.model.Weakness
 import org.springframework.beans.factory.annotation.Value
@@ -32,7 +33,11 @@ class CardQueryRepository(
               LEFT JOIN "set" s ON s.id = c.set_id
              WHERE cl.locale = ? AND cl.name ILIKE ?
                AND c.id ~ '_[0-9]+$'
-             ORDER BY c.set_id, c.number
+               AND c.id LIKE (c.set_id || '_%')
+               AND (s.main_set_count IS NULL OR c.number !~ '^[0-9]+$' OR c.number::integer <= s.main_set_count)
+             ORDER BY c.set_id,
+                      CASE WHEN c.number ~ '^[0-9]+$' THEN c.number::integer END,
+                      c.number
             """.trimIndent(),
             { rs, _ ->
                 NameSearchRow(
@@ -75,7 +80,10 @@ class CardQueryRepository(
               FROM card c
               LEFT JOIN "set" s ON s.id = c.set_id
              WHERE c.set_id = ? AND c.id ~ '_[0-9]+$'
-             ORDER BY c.number
+               AND c.id LIKE (c.set_id || '_%')
+               AND (s.main_set_count IS NULL OR c.number !~ '^[0-9]+$' OR c.number::integer <= s.main_set_count)
+             ORDER BY CASE WHEN c.number ~ '^[0-9]+$' THEN c.number::integer END,
+                      c.number
             """.trimIndent(),
             { rs, _ -> Triple(rs.getString("id"), rs.getString("number"), rs.getObject("main_set_count") as? Int) },
             setId,
@@ -122,7 +130,10 @@ class CardQueryRepository(
             LEFT JOIN "set" s ON s.id = c.set_id
             LEFT JOIN rarity r ON r.code = c.rarity
             WHERE c.set_id = ? AND c.id ~ '_[0-9]+$'
-            ORDER BY c.number
+              AND c.id LIKE (c.set_id || '_%')
+              AND (s.main_set_count IS NULL OR c.number !~ '^[0-9]+$' OR c.number::integer <= s.main_set_count)
+            ORDER BY CASE WHEN c.number ~ '^[0-9]+$' THEN c.number::integer END,
+                     c.number
             """.trimIndent(),
             { rs, _ -> rs.toCardRow() },
             setId,
@@ -200,14 +211,12 @@ class CardQueryRepository(
         val thumbNames: Map<String, String> = cards.associate { c -> cardAssetBaseName(c.id, locale) + "_t" to c.id }
         val hiresNames: Map<String, String> = if (thumbOnly) emptyMap() else cards.associate { c -> cardAssetBaseName(c.id, locale) to c.id }
 
-        // Gather otherPrint sibling IDs across all cards for a bulk thumb lookup.
-        // Derive thumb asset names directly from card IDs — no extra DB query needed.
-        val otherPrintSiblingIds: List<String> = archetypeRows.values.flatten()
-            .filter { row -> row.id.substringAfterLast('_').all(Char::isDigit) }
+        // Gather all sibling IDs for a bulk thumb lookup (variants + otherPrints).
+        val allSiblingIds: List<String> = archetypeRows.values.flatten()
             .map { it.id }
             .distinct()
 
-        val siblingThumbAssetNames: Map<String, String> = otherPrintSiblingIds
+        val siblingThumbAssetNames: Map<String, String> = allSiblingIds
             .associateWith { id -> cardAssetBaseName(id, locale) + "_t" }
 
         val allAssetNames = (thumbNames.keys + hiresNames.keys + siblingThumbAssetNames.values).distinct()
@@ -260,11 +269,22 @@ class CardQueryRepository(
                 ?: if (variantSuffix.isEmpty()) bundleManifests.firstOrNull() else null
 
             val siblings = c.archetype?.let { archetypeRows[it] } ?: emptyList()
+            // Variants: same set + same number, different ID suffix (e.g. _ph, _sph, _mph).
+            // Sorted by CardVariant enum order from the game client.
             val variants = siblings
-                .filter { it.setId == c.setId && it.number == c.number && it.id != c.id }
-                .map { it.id }
+                .filter { it.id != c.id && it.setId == c.setId && it.number == c.number }
+                .map { sibling -> Variant(id = sibling.id, thumb = siblingThumbUrl[sibling.id], type = variantType(sibling.id, sibling.setId)) }
+                .sortedBy { variantTypeOrder[it.type] ?: Int.MAX_VALUE }
+            // Other prints: same archetype but not the same set + number (alt arts, reprints, etc.).
+            // Sorted by CardIdComparer from the game client: series order → set ordinal → card number → ph suffix.
             val otherPrints = siblings
-                .filter { (it.setId != c.setId || it.number != c.number) && it.id != c.id && it.id.substringAfterLast('_').all(Char::isDigit) }
+                .filter { it.id != c.id && !(it.setId == c.setId && it.number == c.number) }
+                .sortedWith(compareBy(
+                    { siblingSeriesIdx(it.id) },
+                    { siblingOrdinalFloat(it.id) },
+                    { it.number.toIntOrNull() ?: Int.MAX_VALUE },
+                    { siblingPhOrder(it.id) },
+                ))
                 .map { sibling -> OtherPrint(id = sibling.id, thumb = siblingThumbUrl[sibling.id]) }
 
             CardResponse(
@@ -332,6 +352,57 @@ class CardQueryRepository(
         val rest    = if (sep >= 0) cardId.substring(sep + 1) else ""
         val number  = rest.substringBefore('_').toIntOrNull() ?: 0
         return "${setCode}_${locale}_%03d".format(number)
+    }
+
+    private fun variantType(cardId: String, setId: String): String {
+        val suffix = cardId.substringAfterLast('_')
+        if (!suffix.all(Char::isDigit)) return suffix
+        return if (cardId.substringBefore('_') == setId) "std" else "alt"
+    }
+
+    // Mirrors CardVariant enum ordinal values from the game client.
+    private val variantTypeOrder = mapOf(
+        "ph" to 1, "op" to 2, "ya" to 4, "pcd" to 8,
+        "td" to 16, "alt" to 32, "sph" to 64, "mph" to 128,
+    )
+
+    // Mirrors OrderedSeriesNamesProvider from the game client.
+    private val seriesOrder: Map<String, Int> = listOf(
+        "EC", "SVE", "ECALT", "HGSS", "HGSSBSP", "BW", "BWBSP", "BWALT",
+        "XY", "XYBSP", "XYALT", "SM", "GUM", "SMBSP", "SMALT",
+        "SWSH", "SWSHBSP", "SWSHALT", "SV", "SVBSP", "SVALT", "DEBUG", "SES",
+    ).withIndex().associate { (i, s) -> s to i }
+
+    // Mirrors CardSetInfo / SetOrdinalComparisonValueParser from the game client.
+    private val setCodeRegex = Regex(
+        """^(GUM|EC|DEBUG|[a-zA-Z]+?)((?:[0-9]*(?:-5)?[A-Za-z]?)|ALT|BSP)$""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    private fun parseSetOrdinal(ordinal: String): Float = when {
+        ordinal.equals("BSP", ignoreCase = true) -> 100f
+        ordinal.equals("ALT", ignoreCase = true) -> 150f
+        ordinal.equals("E",   ignoreCase = true) -> -0.5f
+        ordinal.isEmpty()                         -> -1f
+        else -> ordinal.replace("-", ".").toFloatOrNull() ?: Float.MAX_VALUE
+    }
+
+    // Mirrors CardParallelHoloComparer: none → -1 (first), _ph → 1, _sph → 2, _mph → 3, other → 99.
+    private val phSuffixOrder = mapOf("_ph" to 1, "_sph" to 2, "_mph" to 3)
+
+    private fun siblingSeriesIdx(cardId: String): Int {
+        val m = setCodeRegex.matchEntire(cardId.substringBefore('_')) ?: return Int.MAX_VALUE
+        return seriesOrder[m.groupValues[1].uppercase()] ?: Int.MAX_VALUE
+    }
+
+    private fun siblingOrdinalFloat(cardId: String): Float {
+        val m = setCodeRegex.matchEntire(cardId.substringBefore('_')) ?: return Float.MAX_VALUE
+        return parseSetOrdinal(m.groupValues[2])
+    }
+
+    private fun siblingPhOrder(cardId: String): Int {
+        val suffix = cardId.substringAfterLast('_')
+        return if (suffix.all(Char::isDigit)) -1 else phSuffixOrder["_$suffix"] ?: 99
     }
 
     private val camelSplit = Regex("[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")

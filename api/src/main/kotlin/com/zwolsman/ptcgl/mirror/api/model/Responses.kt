@@ -59,13 +59,15 @@ data class CardResponse(
     val retreat: Int?,
     val weakness: Weakness?,
     val resistance: Resistance?,
-    /** Same card, different holo treatment (same set + number, different ID suffix like _ph). */
-    val variants: List<String>,
-    /** Same card printed in a different set or as an alt art (different set or different number). */
+    /** Same card, different treatment — same set + same number, different ID suffix (e.g. _ph, _sph, _mph). */
+    val variants: List<Variant>,
+    /** Same archetype, different set or collector number (alt arts, reprints, etc.). */
     val otherPrints: List<OtherPrint>,
     val attacks: List<AttackResponse>,
     val assets: CardAssets,
 )
+
+data class Variant(val id: String, val thumb: String?, val type: String)
 
 data class OtherPrint(val id: String, val thumb: String?)
 

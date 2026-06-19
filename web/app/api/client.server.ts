@@ -44,7 +44,7 @@ export interface Card {
   retreat: number | null;
   weakness: { type: string; amount: string } | null;
   resistance: { type: string; amount: string } | null;
-  variants: string[];
+  variants: { id: string; thumb: string | null; type: string }[];
   otherPrints: { id: string; thumb: string | null }[];
   attacks: Attack[];
   assets: CardAssets;

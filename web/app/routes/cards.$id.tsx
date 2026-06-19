@@ -25,6 +25,18 @@ const ENERGY_SPRITES: Record<string, string> = {
   colorless: "/sprites/energy-black/colorless.png",
 }
 
+const VARIANT_LABELS: Record<string, string> = {
+  std: "Standard",
+  ph: "Parallel Holo",
+  sph: "Poké Ball Holo",
+  mph: "Master Ball Holo",
+  alt: "Alt Art",
+  op: "OP",
+  ya: "Yellow A",
+  pcd: "Preconstructed",
+  td: "Theme Deck",
+}
+
 const BADGE_SPRITES: Record<string, string> = {
   ex_atk: "/sprites/badges/ex.png",
   ex_lower_atk: "/sprites/badges/ex.png",
@@ -349,6 +361,39 @@ export default function CardDetail({
                         </p>
                       )}
                     </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Variants */}
+            {card.variants.length > 0 && (
+              <div>
+                <h2 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                  Variants
+                </h2>
+                <div className="flex gap-3 overflow-x-auto pb-2">
+                  {card.variants.map((v) => (
+                    <Link key={v.id} to={`/cards/${v.id}`} className="flex-none w-14 flex flex-col items-center gap-1">
+                      {v.thumb ? (
+                        <img
+                          src={v.thumb}
+                          alt=""
+                          className="w-full object-cover border hover:border-primary/40 transition-colors"
+                          style={{ aspectRatio: "0.718", borderRadius: "4.55% / 3.5%" }}
+                        />
+                      ) : (
+                        <div
+                          className="w-full border bg-muted flex items-center justify-center"
+                          style={{ aspectRatio: "0.718", borderRadius: "4.55% / 3.5%" }}
+                        >
+                          <span className="text-[10px] text-muted-foreground">{v.id.slice(-4)}</span>
+                        </div>
+                      )}
+                      <span className="text-[9px] text-muted-foreground text-center leading-tight">
+                        {VARIANT_LABELS[v.type] ?? v.type}
+                      </span>
+                    </Link>
                   ))}
                 </div>
               </div>
