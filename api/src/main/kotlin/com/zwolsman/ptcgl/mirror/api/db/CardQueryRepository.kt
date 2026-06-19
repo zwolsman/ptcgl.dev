@@ -51,14 +51,14 @@ class CardQueryRepository(
 
         val thumbAssets = queryByIds<AssetRow>(
             "SELECT asset_name, s3_key_decoded, texture_name FROM asset_object WHERE asset_name = ANY(?) AND s3_key_decoded IS NOT NULL",
-            rows.map { "${it.setId}_${locale}_${it.number}_t" },
+            rows.map { cardAssetBaseName(it.id, locale) + "_t" },
         ) { rs, _ ->
             AssetRow(rs.getString("asset_name"), rs.getString("s3_key_decoded"), rs.getString("texture_name"))
         }.associateBy { it.assetName }
 
         return rows.map { c ->
             val formatted = c.number.toIntOrNull()?.toString() ?: c.number
-            val thumbName = "${c.setId}_${locale}_${c.number}_t"
+            val thumbName = cardAssetBaseName(c.id, locale) + "_t"
             CardSummaryResponse(
                 id       = c.id,
                 number   = formatted,
@@ -92,7 +92,7 @@ class CardQueryRepository(
 
         val thumbAssets = queryByIds<AssetRow>(
             "SELECT asset_name, s3_key_decoded, texture_name FROM asset_object WHERE asset_name = ANY(?) AND s3_key_decoded IS NOT NULL",
-            cards.map { (_, number, _) -> "${setId}_${locale}_${number}_t" },
+            cards.map { (id, _, _) -> cardAssetBaseName(id, locale) + "_t" },
         ) { rs, _ ->
             AssetRow(
                 assetName    = rs.getString("asset_name"),
@@ -103,7 +103,7 @@ class CardQueryRepository(
 
         return cards.map { (id, number, mainSetCount) ->
             val formatted = number.toIntOrNull()?.toString() ?: number
-            val thumbAssetName = "${setId}_${locale}_${number}_t"
+            val thumbAssetName = cardAssetBaseName(id, locale) + "_t"
             val thumbAsset = thumbAssets[thumbAssetName]
             CardSummaryResponse(
                 id       = id,
@@ -198,35 +198,18 @@ class CardQueryRepository(
         }
 
         // Collect all asset names we need: thumb for everyone; hires+manifest for detail
-        val thumbNames  = cards.associate { "${it.setId}_${locale}_${it.number}_t" to it.id }
-        val hiresNames  = if (thumbOnly) emptyMap() else cards.associate { "${it.setId}_${locale}_${it.number}" to it.id }
+        val thumbNames  = cards.associate { cardAssetBaseName(it.id, locale) + "_t" to it.id }
+        val hiresNames  = if (thumbOnly) emptyMap() else cards.associate { cardAssetBaseName(it.id, locale) to it.id }
 
-        // Gather otherPrint sibling IDs across all cards for a bulk thumb lookup
+        // Gather otherPrint sibling IDs across all cards for a bulk thumb lookup.
+        // Derive thumb asset names directly from card IDs — no extra DB query needed.
         val otherPrintSiblingIds: List<String> = archetypeRows.values.flatten()
             .filter { row -> row.id.substringAfterLast('_').all(Char::isDigit) }
             .map { it.id }
             .distinct()
 
-        val siblingThumbNames: Map<String, String> = otherPrintSiblingIds
-            .associateWith { siblingId ->
-                val c = archetypeRows.values.flatten().firstOrNull { it.id == siblingId } ?: return@associateWith ""
-                // We need the sibling's set_id + number to construct its thumb name, but we only have id
-                // Derive: thumb asset = {setId}_{locale}_{number}_t — we need to query the card table
-                ""
-            }
-            .filterValues { it.isNotEmpty() }
-
-        // Bulk-query sibling card details (set_id, number) to build their thumb asset names
-        val siblingCardDetails: Map<String, Pair<String, String>> = if (otherPrintSiblingIds.isEmpty()) emptyMap() else {
-            queryByIds<Triple<String, String, String>>(
-                "SELECT id, set_id, number FROM card WHERE id = ANY(?)",
-                otherPrintSiblingIds,
-            ) { rs, _ -> Triple(rs.getString("id"), rs.getString("set_id"), rs.getString("number")) }
-                .associate { (id, setId, number) -> id to (setId to number) }
-        }
-
-        val siblingThumbAssetNames: Map<String, String> = siblingCardDetails
-            .mapValues { (_, details) -> "${details.first}_${locale}_${details.second}_t" }
+        val siblingThumbAssetNames: Map<String, String> = otherPrintSiblingIds
+            .associateWith { id -> cardAssetBaseName(id, locale) + "_t" }
 
         val allAssetNames = (thumbNames.keys + hiresNames.keys + siblingThumbAssetNames.values).distinct()
 
@@ -241,8 +224,10 @@ class CardQueryRepository(
             )
         }.associateBy { it.assetName }
 
-        // material_manifest is keyed by (bundle_asset_name = hires name, variant_suffix)
-        val manifestByKey: Map<Pair<String, String>, ManifestRow> = if (thumbOnly || hiresNames.isEmpty()) emptyMap() else {
+        // material_manifest grouped by bundle_asset_name; each bundle may have multiple variant rows.
+        // Lookup picks the row matching the card's variant suffix, falling back to the first available
+        // row so that alt-set bundles (variant_suffix="alt") are found even for base card IDs.
+        val manifestsByBundle: Map<String, List<ManifestRow>> = if (thumbOnly || hiresNames.isEmpty()) emptyMap() else {
             queryByIds<ManifestRow>(
                 "SELECT bundle_asset_name, variant_suffix, whiteplate_name, etch_name, foil_type, shader_path FROM material_manifest WHERE bundle_asset_name = ANY(?)",
                 hiresNames.keys.toList(),
@@ -254,7 +239,7 @@ class CardQueryRepository(
                     etchName        = rs.getString("etch_name"),
                     foilType        = rs.getString("foil_type"),
                 )
-            }.associateBy { it.bundleAssetName to it.variantSuffix }
+            }.groupBy { it.bundleAssetName }
         }
 
         // Reverse-map sibling thumb asset names → their thumb URL
@@ -265,12 +250,15 @@ class CardQueryRepository(
         return cards.map { c ->
             val formattedNumber = c.number.toIntOrNull()?.toString() ?: c.number
             val position      = c.mainSetCount?.let { "$formattedNumber / $it" }
-            val thumbName     = "${c.setId}_${locale}_${c.number}_t"
-            val hiresName     = "${c.setId}_${locale}_${c.number}"
+            val baseName      = cardAssetBaseName(c.id, locale)
+            val thumbName     = "${baseName}_t"
+            val hiresName     = baseName
             val variantSuffix = if (c.id.substringAfterLast('_').all(Char::isDigit)) "" else c.id.substringAfterLast('_')
             val hiresAsset    = assetByName[hiresName]
             val thumbAsset    = assetByName[thumbName]
-            val manifest      = manifestByKey[hiresName to variantSuffix]
+            val bundleManifests = manifestsByBundle[hiresName] ?: emptyList()
+            val manifest      = bundleManifests.firstOrNull { it.variantSuffix == variantSuffix }
+                ?: if (variantSuffix.isEmpty()) bundleManifests.firstOrNull() else null
 
             val siblings = c.archetype?.let { archetypeRows[it] } ?: emptyList()
             val variants = siblings
@@ -331,6 +319,21 @@ class CardQueryRepository(
 
     private fun assetUrl(assetName: String, s3KeyDecoded: String, textureName: String? = null) =
         "$assetBaseUrl/${s3KeyDecoded.removePrefix(DECODED_S3_PREFIX)}/${textureName ?: assetName}.png"
+
+    /**
+     * Derives the CDN/S3 asset base name from a card ID.
+     * Splits on the first underscore for the set code, then zero-pads the numeric portion to 3 digits.
+     *   svalt_1   → svalt_en_001
+     *   me4_10_ph → me4_en_010
+     *   sv3-5_133 → sv3-5_en_133
+     */
+    private fun cardAssetBaseName(cardId: String, locale: String): String {
+        val sep = cardId.indexOf('_')
+        val setCode = if (sep >= 0) cardId.substring(0, sep) else cardId
+        val rest    = if (sep >= 0) cardId.substring(sep + 1) else ""
+        val number  = rest.substringBefore('_').toIntOrNull() ?: 0
+        return "${setCode}_${locale}_%03d".format(number)
+    }
 
     private val camelSplit = Regex("[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
     private fun camelToSpaced(s: String) = camelSplit.findAll(s).joinToString(" ") { it.value }
