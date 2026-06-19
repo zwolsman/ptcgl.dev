@@ -109,13 +109,14 @@ class CardQueryRepository(
         }.associateBy { it.assetName }
 
         return cards.map { (id, number, mainSetCount) ->
-            val formatted = number.toIntOrNull()?.toString()?.padStart(3, '0') ?: number
+            val formattedNumber = number.toIntOrNull()?.toString()?.padStart(3, '0') ?: number
+            val formattedMainSetCount = mainSetCount?.toString()?.padStart(3, '0')
             val thumbAssetName = cardAssetBaseName(id, locale) + "_t"
             val thumbAsset = thumbAssets[thumbAssetName]
             CardSummaryResponse(
                 id       = id,
-                number   = formatted,
-                position = mainSetCount?.let { "$formatted / $it" },
+                number   = formattedNumber,
+                position = formattedMainSetCount?.let { "$formattedNumber / $it" },
                 name     = names[id],
                 thumb    = thumbAsset?.let { assetUrl(thumbAssetName, it.s3KeyDecoded, it.textureName) },
             )
