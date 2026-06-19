@@ -74,7 +74,7 @@ class CardQueryRepository(
             SELECT c.id, c.number, s.main_set_count
               FROM card c
               LEFT JOIN "set" s ON s.id = c.set_id
-             WHERE c.set_id = ? AND c.id ~ '_[0-9]+$'
+             WHERE split_part(c.id, '_', 1) = ? AND c.id ~ '_[0-9]+$'
              ORDER BY c.number
             """.trimIndent(),
             { rs, _ -> Triple(rs.getString("id"), rs.getString("number"), rs.getObject("main_set_count") as? Int) },
@@ -121,7 +121,7 @@ class CardQueryRepository(
             FROM card c
             LEFT JOIN "set" s ON s.id = c.set_id
             LEFT JOIN rarity r ON r.code = c.rarity
-            WHERE c.set_id = ? AND c.id ~ '_[0-9]+$'
+            WHERE split_part(c.id, '_', 1) = ? AND c.id ~ '_[0-9]+$'
             ORDER BY c.number
             """.trimIndent(),
             { rs, _ -> rs.toCardRow() },
