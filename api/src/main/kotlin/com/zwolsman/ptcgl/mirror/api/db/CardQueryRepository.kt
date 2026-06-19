@@ -81,7 +81,7 @@ class CardQueryRepository(
               LEFT JOIN "set" s ON s.id = c.set_id
              WHERE c.set_id = ? AND c.id ~ '_[0-9]+$'
                AND c.id LIKE (c.set_id || '_%')
-               AND (s.main_set_count IS NULL OR c.number !~ '^[0-9]+$' OR c.number::integer <= s.main_set_count)
+               AND (s.master_set_count IS NULL OR c.number !~ '^[0-9]+$' OR c.number::integer <= s.master_set_count)
              ORDER BY CASE WHEN c.number ~ '^[0-9]+$' THEN c.number::integer END,
                       c.number
             """.trimIndent(),
@@ -109,7 +109,7 @@ class CardQueryRepository(
         }.associateBy { it.assetName }
 
         return cards.map { (id, number, mainSetCount) ->
-            val formatted = number.toIntOrNull()?.toString() ?: number
+            val formatted = number.toIntOrNull()?.toString()?.padStart(3, '0') ?: number
             val thumbAssetName = cardAssetBaseName(id, locale) + "_t"
             val thumbAsset = thumbAssets[thumbAssetName]
             CardSummaryResponse(
@@ -120,25 +120,6 @@ class CardQueryRepository(
                 thumb    = thumbAsset?.let { assetUrl(thumbAssetName, it.s3KeyDecoded, it.textureName) },
             )
         }
-    }
-
-    fun findBySetId(setId: String, locale: String): List<CardResponse> {
-        val cards = jdbc.query(
-            """
-            SELECT c.*, s.series, s.main_set_count, r.display_name AS rarity_display
-            FROM card c
-            LEFT JOIN "set" s ON s.id = c.set_id
-            LEFT JOIN rarity r ON r.code = c.rarity
-            WHERE c.set_id = ? AND c.id ~ '_[0-9]+$'
-              AND c.id LIKE (c.set_id || '_%')
-              AND (s.main_set_count IS NULL OR c.number !~ '^[0-9]+$' OR c.number::integer <= s.main_set_count)
-            ORDER BY CASE WHEN c.number ~ '^[0-9]+$' THEN c.number::integer END,
-                     c.number
-            """.trimIndent(),
-            { rs, _ -> rs.toCardRow() },
-            setId,
-        )
-        return enrichCards(cards, locale, thumbOnly = true)
     }
 
     fun findById(id: String, locale: String): CardResponse? {
