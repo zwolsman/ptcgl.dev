@@ -1,5 +1,6 @@
 export interface Series {
   id: string;
+  name: string | null;
   setCount: number;
 }
 
@@ -76,8 +77,8 @@ async function apiFetch(path: string): Promise<Response> {
   return res;
 }
 
-export async function fetchSeries(): Promise<Series[]> {
-  return (await apiFetch("/v1/series")).json();
+export async function fetchSeries(locale = "en"): Promise<Series[]> {
+  return (await apiFetch(`/v1/series?locale=${locale}`)).json();
 }
 
 export async function fetchSeriesDetail(series: string, locale = "en"): Promise<SeriesDetail> {

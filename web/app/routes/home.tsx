@@ -13,7 +13,7 @@ export function meta() {
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const locale = getLocale(request)
-  const [series, sets] = await Promise.all([fetchSeries(), fetchSets(locale)])
+  const [series, sets] = await Promise.all([fetchSeries(locale), fetchSets(locale)])
   const setsBySeries = sets.reduce<Record<string, PokemonSet[]>>((acc, set) => {
     const key = set.series ?? "__other__"
     if (!acc[key]) acc[key] = []
@@ -55,7 +55,7 @@ export default function Home({
           return (
             <section key={s.id}>
               <div className="flex items-baseline gap-3 mb-4">
-                <h2 className="text-sm font-semibold text-foreground">{s.id}</h2>
+                <h2 className="text-sm font-semibold text-foreground">{s.name ?? s.id}</h2>
                 <span className="text-xs text-muted-foreground">{sets.length} sets</span>
               </div>
               <div className="flex flex-wrap gap-3">
