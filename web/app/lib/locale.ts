@@ -1,11 +1,11 @@
 export const LOCALES = [
-  { code: "en", label: "English" },
-  { code: "fr", label: "Français" },
-  { code: "es", label: "Español" },
-  { code: "it", label: "Italiano" },
-  { code: "de", label: "Deutsch" },
-  { code: "pt", label: "Português" },
-  // { code: "es-419", label: "Español (Latinoamérica)" }, // API code TBD
+  { code: "en",   label: "English" },
+  { code: "jp",   label: "日本語" },
+  { code: "es",   label: "Español" },
+  { code: "fr",   label: "Français" },
+  { code: "de",   label: "Deutsch" },
+  { code: "it",   label: "Italiano" },
+  { code: "ptbr", label: "Português (Brasil)" },
 ] as const;
 
 export type LocaleCode = (typeof LOCALES)[number]["code"];

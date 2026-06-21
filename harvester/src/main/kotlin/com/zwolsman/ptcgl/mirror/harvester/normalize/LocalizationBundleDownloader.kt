@@ -18,7 +18,7 @@ private val HTML_TAG_REGEX = Regex("<[^>]+>")
 class LocalizationBundleDownloader(private val cdnClient: CdnClient) {
 
     companion object {
-        val SUPPORTED_LOCALES = listOf("en", "fr", "de", "es", "it", "pt")
+        val SUPPORTED_LOCALES = listOf("en", "jp", "es", "fr", "de", "it", "ptbr")
     }
 
     /**
