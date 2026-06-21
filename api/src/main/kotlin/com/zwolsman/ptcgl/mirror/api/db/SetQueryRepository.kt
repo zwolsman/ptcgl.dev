@@ -15,16 +15,23 @@ class SetQueryRepository(
     @param:Value("\${mirror.api.decoded-s3-prefix}") private val decodedS3Prefix: String,
 ) {
 
-    fun findAllSeries(): List<SeriesResponse> {
+    fun findAllSeries(locale: String = "en"): List<SeriesResponse> {
         return jdbc.query(
             """
-            SELECT series, COUNT(*) AS set_count
-            FROM "set"
-            WHERE series IS NOT NULL
-            GROUP BY series
-            ORDER BY series
+            SELECT s.series, sl.name, COUNT(*) AS set_count
+            FROM "set" s
+            LEFT JOIN series_localization sl ON sl.series_id = s.series AND sl.locale = ?
+            WHERE s.series IS NOT NULL
+            GROUP BY s.series, sl.name
+            ORDER BY s.series
             """.trimIndent(),
-        ) { rs, _ -> SeriesResponse(rs.getString("series"), rs.getInt("set_count")) }
+            { rs, _ -> SeriesResponse(
+                id       = rs.getString("series"),
+                name     = rs.getString("name"),
+                setCount = rs.getInt("set_count"),
+            )},
+            locale,
+        )
     }
 
     fun findAll(locale: String = "en"): List<SetResponse> {

@@ -126,14 +126,16 @@ class CardQueryRepository(
     fun findById(id: String, locale: String): CardResponse? {
         val card = jdbc.query(
             """
-            SELECT c.*, s.series, s.main_set_count, r.display_name AS rarity_display
+            SELECT c.*, s.series, s.main_set_count,
+                   COALESCE(rl.display_name, r.display_name) AS rarity_display
             FROM card c
             LEFT JOIN "set" s ON s.id = c.set_id
             LEFT JOIN rarity r ON r.code = c.rarity
+            LEFT JOIN rarity_localization rl ON rl.code = c.rarity AND rl.locale = ?
             WHERE c.id = ?
             """.trimIndent(),
             { rs, _ -> rs.toCardRow() },
-            id,
+            locale, id,
         ).firstOrNull() ?: return null
         return enrichCards(listOf(card), locale, thumbOnly = false).firstOrNull()
     }

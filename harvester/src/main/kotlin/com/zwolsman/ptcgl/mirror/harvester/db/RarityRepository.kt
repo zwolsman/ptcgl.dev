@@ -1,5 +1,6 @@
 package com.zwolsman.ptcgl.mirror.harvester.db
 
+import com.zwolsman.ptcgl.mirror.harvester.domain.RarityLocalizationRecord
 import com.zwolsman.ptcgl.mirror.harvester.normalize.RarityDefinition
 import org.springframework.jdbc.core.BatchPreparedStatementSetter
 import org.springframework.jdbc.core.JdbcTemplate
@@ -28,6 +29,27 @@ class RarityRepository(private val jdbc: JdbcTemplate) {
                     ps.setInt(3, rarities[i].sortValue)
                 }
                 override fun getBatchSize() = rarities.size
+            },
+        )
+    }
+
+    @Transactional
+    fun upsertLocalizations(rows: List<RarityLocalizationRecord>) {
+        if (rows.isEmpty()) return
+        jdbc.batchUpdate(
+            """
+            INSERT INTO rarity_localization (code, locale, display_name)
+            VALUES (?, ?, ?)
+            ON CONFLICT (code, locale) DO UPDATE SET
+                display_name = EXCLUDED.display_name
+            """.trimIndent(),
+            object : BatchPreparedStatementSetter {
+                override fun setValues(ps: PreparedStatement, i: Int) {
+                    ps.setString(1, rows[i].code)
+                    ps.setString(2, rows[i].locale)
+                    ps.setString(3, rows[i].displayName)
+                }
+                override fun getBatchSize() = rows.size
             },
         )
     }

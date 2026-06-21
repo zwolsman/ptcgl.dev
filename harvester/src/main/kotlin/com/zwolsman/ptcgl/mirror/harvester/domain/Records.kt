@@ -19,6 +19,18 @@ data class SetLocalizationRecord(
     val name: String,
 )
 
+data class SeriesLocalizationRecord(
+    val seriesId: String,
+    val locale: String,
+    val name: String,
+)
+
+data class RarityLocalizationRecord(
+    val code: String,
+    val locale: String,
+    val displayName: String,
+)
+
 data class CardRecord(
     val id: String,               // e.g. "sv1_1"
     val setId: String,            // e.g. "sv1"

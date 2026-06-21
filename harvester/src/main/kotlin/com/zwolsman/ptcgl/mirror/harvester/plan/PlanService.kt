@@ -7,7 +7,11 @@ import com.zwolsman.ptcgl.mirror.harvester.db.CardRepository
 import com.zwolsman.ptcgl.mirror.harvester.db.ConfigRevisionRepository
 import com.zwolsman.ptcgl.mirror.harvester.db.RarityRepository
 import com.zwolsman.ptcgl.mirror.harvester.db.SetRepository
+import com.zwolsman.ptcgl.mirror.harvester.domain.RarityLocalizationRecord
+import com.zwolsman.ptcgl.mirror.harvester.domain.SeriesLocalizationRecord
+import com.zwolsman.ptcgl.mirror.harvester.domain.SetLocalizationRecord
 import com.zwolsman.ptcgl.mirror.harvester.domain.SetRecord
+import com.zwolsman.ptcgl.mirror.harvester.normalize.LocalizationBundleDownloader
 import com.zwolsman.ptcgl.mirror.harvester.normalize.RarityManifestParser
 import com.zwolsman.ptcgl.mirror.harvester.download.AssetDecodeService
 import com.zwolsman.ptcgl.mirror.harvester.download.AssetDownloadService
@@ -39,6 +43,7 @@ class PlanService(
     private val assetDownloadService: AssetDownloadService,
     private val assetDecodeService: AssetDecodeService,
     private val rarityRepo: RarityRepository,
+    private val localizationDownloader: LocalizationBundleDownloader,
 ) {
 
     /**
@@ -50,31 +55,58 @@ class PlanService(
         log.info("Phase A starting (locale={}, setFilter={}, latestOnly={})", locale, setFilter, latestOnly)
         assetRepo.reclaimExpiredLeases()
 
-        val setManifestId     = "set-manifest_0.0"
-        val bundleManifestId  = "asset-bundle-manifest_0.0"
-        val cardDbManifestId  = "card-databases-manifest_0.0"
-        val rarityManifestId  = "rarity-manifest_0.0"
+        val setManifestId      = "set-manifest_0.0"
+        val bundleManifestId   = "asset-bundle-manifest_0.0"
+        val cardDbManifestId   = "card-databases-manifest_0.0"
+        val rarityManifestId   = "rarity-manifest_0.0"
+        val locBundleManifestId = "localization-bundle-manifest_0.0"
 
         // --- 1. Fetch control-plane docs (always fetch to get revisions) ---
-        log.info("Fetching config docs: {}, {}, {}, {}", setManifestId, bundleManifestId, cardDbManifestId, rarityManifestId)
-        val (setManifestDoc, bundleManifestDoc, cardDbManifestDoc, rarityManifestDoc) =
-            configClient.getMultiple(setManifestId, bundleManifestId, cardDbManifestId, rarityManifestId)
+        log.info("Fetching config docs")
+        val (setManifestDoc, bundleManifestDoc, cardDbManifestDoc, rarityManifestDoc, locBundleManifestDoc) =
+            configClient.getMultiple(setManifestId, bundleManifestId, cardDbManifestId, rarityManifestId, locBundleManifestId)
+
+        // Always parse sets — needed for localization keys and set filter logic below.
+        val allSets = SetManifestParser.parse(setManifestDoc)
+
+        // --- 1b. Download localization bundles (skip if unchanged) ---
+        val locTables: Map<String, Map<String, String>>
+        if (revisionRepo.isUpToDate(locBundleManifestId, locBundleManifestDoc.revision)) {
+            log.info("localization-bundle-manifest unchanged (rev={}), skipping download", locBundleManifestDoc.revision)
+            locTables = emptyMap()
+        } else {
+            log.info("Downloading localization bundles (rev={})", locBundleManifestDoc.revision)
+            locTables = localizationDownloader.download(locBundleManifestDoc)
+
+            // Upsert set and series localizations for all downloaded locales.
+            val allSeriesIds = allSets.mapNotNull { it.series }.distinct()
+            for ((loc, table) in locTables) {
+                val setRows = allSets.mapNotNull { s ->
+                    val name = table["tcg_${s.id}"]?.let(localizationDownloader::stripHtml) ?: return@mapNotNull null
+                    SetLocalizationRecord(s.id, loc, name)
+                }
+                if (setRows.isNotEmpty()) setRepo.upsertLocalizations(setRows)
+
+                val seriesRows = allSeriesIds.mapNotNull { seriesId ->
+                    val name = table["tcg_${seriesId.lowercase()}"]?.let(localizationDownloader::stripHtml) ?: return@mapNotNull null
+                    SeriesLocalizationRecord(seriesId, loc, name)
+                }
+                if (seriesRows.isNotEmpty()) setRepo.upsertSeriesLocalizations(seriesRows)
+            }
+
+            revisionRepo.save(locBundleManifestId, locBundleManifestDoc.revision)
+            log.info("Localizations upserted for {} locales", locTables.size)
+        }
+
+        // English table used as the primary localization source for display names.
+        val enTable = locTables["en"] ?: emptyMap()
 
         // --- 2. Sets (skip if unchanged) ---
-        val allSets: List<SetRecord>
         if (revisionRepo.isUpToDate(setManifestId, setManifestDoc.revision)) {
             log.info("set-manifest unchanged (rev={}), skipping set upsert", setManifestDoc.revision)
-            allSets = SetManifestParser.parse(setManifestDoc)
         } else {
-            log.info("Processing set-manifest (rev={})", setManifestDoc.revision)
-            allSets = SetManifestParser.parse(setManifestDoc)
-            log.info("Found {} sets", allSets.size)
+            log.info("Processing set-manifest (rev={}), {} sets", setManifestDoc.revision, allSets.size)
             setRepo.upsertSets(allSets)
-            allSets.forEach { s ->
-                setRepo.upsertLocalizations(listOf(
-                    com.zwolsman.ptcgl.mirror.harvester.domain.SetLocalizationRecord(s.id, locale, s.name)
-                ))
-            }
             revisionRepo.save(setManifestId, setManifestDoc.revision)
             log.info("Sets upserted")
         }
@@ -84,9 +116,23 @@ class PlanService(
             log.info("rarity-manifest unchanged (rev={}), skipping rarity upsert", rarityManifestDoc.revision)
         } else {
             log.info("Processing rarity-manifest (rev={})", rarityManifestDoc.revision)
-            val rarities = RarityManifestParser.parse(rarityManifestDoc)
+            val rarities = RarityManifestParser.parse(rarityManifestDoc, enTable)
             log.info("Found {} rarities", rarities.size)
             rarityRepo.upsert(rarities)
+
+            // Upsert locale-specific rarity display names if we have localization data.
+            if (locTables.isNotEmpty()) {
+                for ((loc, table) in locTables) {
+                    val rows = rarities.mapNotNull { r ->
+                        val name = table["tcg_rarity_${r.code.lowercase()}"]
+                            ?.let(localizationDownloader::extractRarityName)
+                            ?: return@mapNotNull null
+                        RarityLocalizationRecord(r.code, loc, name)
+                    }
+                    if (rows.isNotEmpty()) rarityRepo.upsertLocalizations(rows)
+                }
+            }
+
             revisionRepo.save(rarityManifestId, rarityManifestDoc.revision)
             log.info("Rarities upserted")
         }

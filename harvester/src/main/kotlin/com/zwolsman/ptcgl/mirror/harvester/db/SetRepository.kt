@@ -1,5 +1,6 @@
 package com.zwolsman.ptcgl.mirror.harvester.db
 
+import com.zwolsman.ptcgl.mirror.harvester.domain.SeriesLocalizationRecord
 import com.zwolsman.ptcgl.mirror.harvester.domain.SetLocalizationRecord
 import com.zwolsman.ptcgl.mirror.harvester.domain.SetRecord
 import org.springframework.jdbc.core.JdbcTemplate
@@ -64,5 +65,26 @@ class SetRepository(private val jdbc: JdbcTemplate) {
             }
             override fun getBatchSize() = rows.size
         })
+    }
+
+    @Transactional
+    fun upsertSeriesLocalizations(rows: List<SeriesLocalizationRecord>) {
+        if (rows.isEmpty()) return
+        jdbc.batchUpdate(
+            """
+            INSERT INTO series_localization (series_id, locale, name)
+            VALUES (?, ?, ?)
+            ON CONFLICT (series_id, locale) DO UPDATE SET
+                name = EXCLUDED.name
+            """.trimIndent(),
+            object : BatchPreparedStatementSetter {
+                override fun setValues(ps: PreparedStatement, i: Int) {
+                    ps.setString(1, rows[i].seriesId)
+                    ps.setString(2, rows[i].locale)
+                    ps.setString(3, rows[i].name)
+                }
+                override fun getBatchSize() = rows.size
+            },
+        )
     }
 }

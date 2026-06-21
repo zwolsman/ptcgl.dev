@@ -11,6 +11,7 @@ data class ApiStatus(
 
 data class SeriesResponse(
     val id: String,
+    val name: String?,
     val setCount: Int,
 )
 

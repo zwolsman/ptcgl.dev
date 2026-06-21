@@ -16,7 +16,9 @@ import org.springframework.web.server.ResponseStatusException
 class SeriesController(private val setRepo: SetQueryRepository) {
 
     @GetMapping
-    fun listSeries(): List<SeriesResponse> = setRepo.findAllSeries()
+    fun listSeries(
+        @RequestParam(defaultValue = "en") locale: String,
+    ): List<SeriesResponse> = setRepo.findAllSeries(locale)
 
     @GetMapping("/{series}")
     fun getSeries(
