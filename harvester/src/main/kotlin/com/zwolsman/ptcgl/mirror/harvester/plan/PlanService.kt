@@ -172,11 +172,17 @@ class PlanService(
                 continue
             }
             for (template in templates) {
-                val docId = "card-database-${template.replace("{0}", locale)}_0.0"
-                try {
-                    processCardDatabase(docId, setCode, locale, force)
-                } catch (e: Exception) {
-                    log.warn("Skipping card-database {}: {}", docId, e.message)
+                // Primary locale: full upsert (cards + attacks + localizations).
+                // All other supported locales: localizations only — card and attack records
+                // are locale-invariant and already written by the primary locale pass.
+                for (loc in LocalizationBundleDownloader.SUPPORTED_LOCALES) {
+                    val docId = "card-database-${template.replace("{0}", loc)}_0.0"
+                    val localizationsOnly = loc != locale
+                    try {
+                        processCardDatabase(docId, setCode, loc, force, localizationsOnly)
+                    } catch (e: Exception) {
+                        log.warn("Skipping card-database {}: {}", docId, e.message)
+                    }
                 }
             }
         }
@@ -237,7 +243,13 @@ class PlanService(
         log.info("Phase C complete. {} / {} bundles unpacked.", decoded, undecoded)
     }
 
-    private fun processCardDatabase(docId: String, setCode: String, locale: String, force: Boolean = false) {
+    private fun processCardDatabase(
+        docId: String,
+        setCode: String,
+        locale: String,
+        force: Boolean = false,
+        localizationsOnly: Boolean = false,
+    ) {
         val doc = try {
             configClient.getMultiple(docId).first()
         } catch (e: Exception) {
@@ -250,18 +262,21 @@ class PlanService(
             return
         }
 
-        log.info("Processing {} (rev={})", docId, doc.revision)
+        log.info("Processing {} (rev={}, localizationsOnly={})", docId, doc.revision, localizationsOnly)
         val entry = doc["card-database"] ?: doc.data.values.firstOrNull()
             ?: run { log.warn("No data entry in {}", docId); return }
 
         val table = DataTableCodec.decodeFromBase64(entry.payloadBase64)
         val result = CardDbNormalizer.normalize(table, locale)
-        cardRepo.upsertCards(result.cards)
+        if (!localizationsOnly) {
+            cardRepo.upsertCards(result.cards)
+            cardRepo.upsertAttacks(result.attacks)
+        }
         cardRepo.upsertLocalizations(result.localizations)
-        cardRepo.upsertAttacks(result.attacks)
         cardRepo.upsertAttackLocalizations(result.attackLocalizations)
         revisionRepo.save(docId, doc.revision)
-        log.info("Upserted {} cards ({} attacks) from {}", result.cards.size, result.attacks.size, setCode)
+        log.info("Upserted {} cards ({} attacks) from {} [locale={}]",
+            result.cards.size, result.attacks.size, setCode, locale)
     }
 
     /**
