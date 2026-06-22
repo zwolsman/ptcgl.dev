@@ -242,10 +242,11 @@ class CardQueryRepository(
         return cards.map { c ->
             val formattedNumber = c.number.toIntOrNull()?.toString() ?: c.number
             val position      = c.mainSetCount?.let { "$formattedNumber / $it" }
+            val currentBaseId = baseCardId(c.id)
             val baseName      = cardAssetBaseName(c.id, locale)
             val thumbName     = "${baseName}_t"
             val hiresName     = baseName
-            val variantSuffix = if (c.id.substringAfterLast('_').all(Char::isDigit)) "" else c.id.substringAfterLast('_')
+            val variantSuffix = if (c.id == currentBaseId) "" else c.id.substringAfterLast('_')
             val hiresAsset    = assetByName[hiresName]
             val thumbAsset    = assetByName[thumbName]
             val bundleManifests = manifestsByBundle[hiresName] ?: emptyList()
@@ -253,21 +254,23 @@ class CardQueryRepository(
                 ?: if (variantSuffix.isEmpty()) bundleManifests.firstOrNull() else null
 
             val siblings = c.archetype?.let { archetypeRows[it] } ?: emptyList()
-            // Variants: same set + same number, different ID suffix (e.g. _ph, _sph, _mph).
+            // Variants: same base card ID, different treatment (e.g. _ph, _sph, _mph).
             // Sorted by CardVariant enum order from the game client.
             val variants = siblings
-                .filter { it.id != c.id && it.setId == c.setId && it.number == c.number }
+                .filter { it.id != c.id && baseCardId(it.id) == currentBaseId }
                 .map { sibling -> Variant(id = sibling.id, thumb = siblingThumbUrl[sibling.id], type = variantType(sibling.id, sibling.setId)) }
                 .sortedBy { variantTypeOrder[it.type] ?: Int.MAX_VALUE }
-            // Other prints: same archetype but not the same set + number (alt arts, reprints, etc.).
-            // Sorted by CardIdComparer from the game client: series order → set ordinal → card number → ph suffix.
+            // Other prints: distinct base card IDs from other archetype groups (alt arts, reprints, etc.).
+            // Only base cards are included — variant-suffixed siblings (_ph, _sph, …) are excluded
+            // because they belong to the variants list of their own base card.
+            // Alt-set cards (e.g. svalt_108) are base cards and are included.
+            // Sorted by CardIdComparer from the game client: series order → set ordinal → card number.
             val otherPrints = siblings
-                .filter { it.id != c.id && !(it.setId == c.setId && it.number == c.number) }
+                .filter { baseCardId(it.id) != currentBaseId && it.id == baseCardId(it.id) }
                 .sortedWith(compareBy(
                     { siblingSeriesIdx(it.id) },
                     { siblingOrdinalFloat(it.id) },
                     { it.number.toIntOrNull() ?: Int.MAX_VALUE },
-                    { siblingPhOrder(it.id) },
                 ))
                 .map { sibling -> OtherPrint(id = sibling.id, thumb = siblingThumbUrl[sibling.id]) }
 
@@ -338,9 +341,15 @@ class CardQueryRepository(
         return "${setCode}_${locale}_%03d".format(number)
     }
 
-    private fun variantType(cardId: String, setId: String): String {
+    // Strips a non-numeric variant suffix (_ph, _sph, _mph, …) from a card ID.
+    // e.g. "me4_108_ph" → "me4_108", "svalt_108" → "svalt_108" (numeric suffix, unchanged).
+    private fun baseCardId(cardId: String): String {
         val suffix = cardId.substringAfterLast('_')
-        if (!suffix.all(Char::isDigit)) return suffix
+        return if (suffix.all(Char::isDigit)) cardId else cardId.substringBeforeLast('_')
+    }
+
+    private fun variantType(cardId: String, setId: String): String {
+        if (cardId != baseCardId(cardId)) return cardId.substringAfterLast('_')
         return if (cardId.substringBefore('_') == setId) "std" else "alt"
     }
 
@@ -371,9 +380,6 @@ class CardQueryRepository(
         else -> ordinal.replace("-", ".").toFloatOrNull() ?: Float.MAX_VALUE
     }
 
-    // Mirrors CardParallelHoloComparer: none → -1 (first), _ph → 1, _sph → 2, _mph → 3, other → 99.
-    private val phSuffixOrder = mapOf("_ph" to 1, "_sph" to 2, "_mph" to 3)
-
     private fun siblingSeriesIdx(cardId: String): Int {
         val m = setCodeRegex.matchEntire(cardId.substringBefore('_')) ?: return Int.MAX_VALUE
         return seriesOrder[m.groupValues[1].uppercase()] ?: Int.MAX_VALUE
@@ -384,10 +390,6 @@ class CardQueryRepository(
         return parseSetOrdinal(m.groupValues[2])
     }
 
-    private fun siblingPhOrder(cardId: String): Int {
-        val suffix = cardId.substringAfterLast('_')
-        return if (suffix.all(Char::isDigit)) -1 else phSuffixOrder["_$suffix"] ?: 99
-    }
 
     private val camelSplit = Regex("[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
     private fun camelToSpaced(s: String) = camelSplit.findAll(s).joinToString(" ") { it.value }
