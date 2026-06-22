@@ -44,9 +44,7 @@ class PtcsTokenClient(
 
         http.newCall(request).execute().use { response ->
             val bodyStr = response.body?.string() ?: ""
-            check(response.isSuccessful) {
-                "PTCS token refresh failed ${response.code}: $bodyStr"
-            }
+            if (!response.isSuccessful) throw RainierHttpException(response.code, "PTCS token refresh failed ${response.code}: $bodyStr")
             val parsed = mapper.readValue<TokenResponse>(bodyStr)
             val expiresAt = Instant.now().plusSeconds(parsed.expiresIn.toLong() - 60)
             return PtcsTokens(

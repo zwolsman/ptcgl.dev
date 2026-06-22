@@ -86,9 +86,7 @@ class AuthClient(
 
         http.newCall(request).execute().use { response ->
             val bodyStr = response.body?.string() ?: ""
-            check(response.isSuccessful) {
-                "POST $url failed ${response.code}: $bodyStr"
-            }
+            if (!response.isSuccessful) throw RainierHttpException(response.code, "POST $url failed ${response.code}: $bodyStr")
             return bodyStr
         }
     }
