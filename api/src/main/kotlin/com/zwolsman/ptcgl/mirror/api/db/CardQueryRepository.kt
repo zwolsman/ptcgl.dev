@@ -61,12 +61,12 @@ class CardQueryRepository(
         }.associateBy { it.assetName }
 
         return rows.map { c ->
-            val formatted = c.number.toIntOrNull()?.toString() ?: c.number
+            val formatted = formatNumber(c.number)
             val thumbName = cardAssetBaseName(c.id, locale) + "_t"
             CardSummaryResponse(
                 id       = c.id,
                 number   = formatted,
-                position = c.mainSetCount?.let { "$formatted / $it" },
+                position = formatPosition(formatted, c.mainSetCount),
                 name     = c.name,
                 thumb    = thumbAssets[thumbName]?.let { assetUrl(thumbName, it.s3KeyDecoded, it.textureName) },
             )
@@ -109,14 +109,13 @@ class CardQueryRepository(
         }.associateBy { it.assetName }
 
         return cards.map { (id, number, mainSetCount) ->
-            val formattedNumber = number.toIntOrNull()?.toString()?.padStart(3, '0') ?: number
-            val formattedMainSetCount = mainSetCount?.toString()?.padStart(3, '0')
+            val formattedNumber = formatNumber(number)
             val thumbAssetName = cardAssetBaseName(id, locale) + "_t"
             val thumbAsset = thumbAssets[thumbAssetName]
             CardSummaryResponse(
                 id       = id,
                 number   = formattedNumber,
-                position = formattedMainSetCount?.let { "$formattedNumber / $it" },
+                position = formatPosition(formattedNumber, mainSetCount),
                 name     = names[id],
                 thumb    = thumbAsset?.let { assetUrl(thumbAssetName, it.s3KeyDecoded, it.textureName) },
             )
@@ -240,8 +239,8 @@ class CardQueryRepository(
         }
 
         return cards.map { c ->
-            val formattedNumber = c.number.toIntOrNull()?.toString() ?: c.number
-            val position      = c.mainSetCount?.let { "$formattedNumber / $it" }
+            val formattedNumber = formatNumber(c.number)
+            val position      = formatPosition(formattedNumber, c.mainSetCount)
             val currentBaseId = baseCardId(c.id)
             val baseName      = cardAssetBaseName(c.id, locale)
             val thumbName     = "${baseName}_t"
@@ -390,6 +389,9 @@ class CardQueryRepository(
         return parseSetOrdinal(m.groupValues[2])
     }
 
+
+    private fun formatNumber(raw: String) = raw.toIntOrNull()?.toString()?.padStart(3, '0') ?: raw
+    private fun formatPosition(number: String, count: Int?) = count?.let { "$number / ${it.toString().padStart(3, '0')}" }
 
     private val camelSplit = Regex("[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
     private fun camelToSpaced(s: String) = camelSplit.findAll(s).joinToString(" ") { it.value }
