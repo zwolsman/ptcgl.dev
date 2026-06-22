@@ -1,6 +1,6 @@
 export const LOCALES = [
   { code: "en",   label: "English" },
-  { code: "jp",   label: "日本語" },
+  // { code: "jp",   label: "日本語" },
   { code: "es",   label: "Español" },
   { code: "fr",   label: "Français" },
   { code: "de",   label: "Deutsch" },
