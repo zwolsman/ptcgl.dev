@@ -10,3 +10,7 @@ data:
   # For AWS S3: https://ptcgl.s3.amazonaws.com
   MIRROR_API_ASSET_BASE_URL: https://changeme.example.com/ptcgl
   MIRROR_API_DECODED_S3_PREFIX: "decoded/"
+  MIRROR_API_CORS_ORIGINS: "https://ptcgl.dev"
+  MIRROR_API_RATE_LIMIT_ENABLED: "true"
+  MIRROR_API_RATE_LIMIT_RPM: "60"
+  MIRROR_API_SEARCH_MAX_RESULTS: "50"

@@ -13,7 +13,7 @@ export function meta() {
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const locale = getLocale(request)
-  const [series, sets] = await Promise.all([fetchSeries(locale), fetchSets(locale)])
+  const [series, sets] = await Promise.all([fetchSeries(locale, request), fetchSets(locale, request)])
   const setsBySeries = sets.reduce<Record<string, PokemonSet[]>>((acc, set) => {
     const key = set.series ?? "__other__"
     if (!acc[key]) acc[key] = []

@@ -19,10 +19,11 @@ class CardQueryRepository(
     private val jdbc: JdbcTemplate,
     @param:Value("\${mirror.api.asset-base-url}") private val assetBaseUrl: String,
     @param:Value("\${mirror.api.decoded-s3-prefix}") private val decodedS3Prefix: String,
+    @param:Value("\${mirror.api.search.max-results:50}") private val searchMaxResults: Int,
 ) {
 
     fun findByName(name: String, locale: String, exact: Boolean = false): List<CardSummaryResponse> {
-        if (name.isBlank()) return emptyList()
+        if (name.isBlank() || (!exact && name.length < 2)) return emptyList()
         // ILIKE without wildcards = case-insensitive exact match; with % = partial match
         val param = if (exact) name else "%$name%"
         val rows = jdbc.query(
@@ -38,6 +39,7 @@ class CardQueryRepository(
              ORDER BY c.set_id,
                       CASE WHEN c.number ~ '^[0-9]+$' THEN c.number::integer END,
                       c.number
+             LIMIT ?
             """.trimIndent(),
             { rs, _ ->
                 NameSearchRow(
@@ -50,6 +52,7 @@ class CardQueryRepository(
             },
             locale,
             param,
+            searchMaxResults,
         )
         if (rows.isEmpty()) return emptyList()
 

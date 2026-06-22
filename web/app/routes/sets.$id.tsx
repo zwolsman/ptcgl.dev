@@ -11,8 +11,8 @@ export function meta({ data }: { data: { set: PokemonSet; cards: CardSummary[] }
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const locale = getLocale(request)
   const [set, cards] = await Promise.all([
-    fetchSet(params.id!, locale),
-    fetchSetCards(params.id!, locale),
+    fetchSet(params.id!, locale, request),
+    fetchSetCards(params.id!, locale, request),
   ])
   return { locale, set, cards }
 }

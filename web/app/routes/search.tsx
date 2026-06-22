@@ -14,7 +14,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const params = new URL(request.url).searchParams
   const name = params.get("name") ?? ""
   const exact = params.get("exact") === "true"
-  const cards = name.trim() ? await searchCards(name, locale, exact) : []
+  const cards = name.trim() ? await searchCards(name, locale, exact, request) : []
   return { locale, name, cards }
 }
 

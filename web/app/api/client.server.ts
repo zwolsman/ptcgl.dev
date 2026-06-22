@@ -1,3 +1,5 @@
+import { getClientIp } from "~/lib/client-ip"
+
 export interface Series {
   id: string;
   name: string | null;
@@ -71,37 +73,42 @@ function apiBase(): string {
   return process.env.API_BASE_URL ?? "http://localhost:8080"
 }
 
-async function apiFetch(path: string): Promise<Response> {
-  const res = await fetch(`${apiBase()}${path}`);
+async function apiFetch(path: string, request?: Request): Promise<Response> {
+  const headers: HeadersInit = {}
+  if (request) {
+    const clientIp = getClientIp(request)
+    if (clientIp) headers["X-Forwarded-For"] = clientIp
+  }
+  const res = await fetch(`${apiBase()}${path}`, { headers })
   if (!res.ok) throw new Response(res.statusText, { status: res.status });
   return res;
 }
 
-export async function fetchSeries(locale = "en"): Promise<Series[]> {
-  return (await apiFetch(`/v1/series?locale=${locale}`)).json();
+export async function fetchSeries(locale = "en", request?: Request): Promise<Series[]> {
+  return (await apiFetch(`/v1/series?locale=${locale}`, request)).json();
 }
 
-export async function fetchSeriesDetail(series: string, locale = "en"): Promise<SeriesDetail> {
-  return (await apiFetch(`/v1/series/${series}?locale=${locale}`)).json();
+export async function fetchSeriesDetail(series: string, locale = "en", request?: Request): Promise<SeriesDetail> {
+  return (await apiFetch(`/v1/series/${series}?locale=${locale}`, request)).json();
 }
 
-export async function fetchSets(locale = "en"): Promise<Set[]> {
-  return (await apiFetch(`/v1/sets?locale=${locale}`)).json();
+export async function fetchSets(locale = "en", request?: Request): Promise<Set[]> {
+  return (await apiFetch(`/v1/sets?locale=${locale}`, request)).json();
 }
 
-export async function fetchSet(id: string, locale = "en"): Promise<Set> {
-  return (await apiFetch(`/v1/sets/${id}?locale=${locale}`)).json();
+export async function fetchSet(id: string, locale = "en", request?: Request): Promise<Set> {
+  return (await apiFetch(`/v1/sets/${id}?locale=${locale}`, request)).json();
 }
 
-export async function fetchSetCards(setId: string, locale = "en"): Promise<CardSummary[]> {
-  return (await apiFetch(`/v1/sets/${setId}/cards?locale=${locale}`)).json();
+export async function fetchSetCards(setId: string, locale = "en", request?: Request): Promise<CardSummary[]> {
+  return (await apiFetch(`/v1/sets/${setId}/cards?locale=${locale}`, request)).json();
 }
 
-export async function fetchCard(id: string, locale = "en"): Promise<Card> {
-  return (await apiFetch(`/v1/cards/${id}?locale=${locale}`)).json();
+export async function fetchCard(id: string, locale = "en", request?: Request): Promise<Card> {
+  return (await apiFetch(`/v1/cards/${id}?locale=${locale}`, request)).json();
 }
 
-export async function searchCards(name: string, locale = "en", exact = false): Promise<CardSummary[]> {
+export async function searchCards(name: string, locale = "en", exact = false, request?: Request): Promise<CardSummary[]> {
   const params = new URLSearchParams({ name, locale, ...(exact ? { exact: "true" } : {}) });
-  return (await apiFetch(`/v1/cards?${params}`)).json();
+  return (await apiFetch(`/v1/cards?${params}`, request)).json();
 }

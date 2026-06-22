@@ -156,7 +156,7 @@ export function meta({ data }: { data: { locale: string; card: Card } | undefine
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const locale = getLocale(request)
-  const card = await fetchCard(params.id!, locale)
+  const card = await fetchCard(params.id!, locale, request)
   return { locale, card }
 }
 

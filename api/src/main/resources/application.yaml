@@ -25,3 +25,9 @@ mirror:
   api:
     asset-base-url: ${MIRROR_API_ASSET_BASE_URL:http://localhost:9000/ptcgl-dev}
     decoded-s3-prefix: ${MIRROR_API_DECODED_S3_PREFIX:}
+    cors-origins: ${MIRROR_API_CORS_ORIGINS:}
+    rate-limit:
+      enabled: ${MIRROR_API_RATE_LIMIT_ENABLED:true}
+      requests-per-minute: ${MIRROR_API_RATE_LIMIT_RPM:60}
+    search:
+      max-results: ${MIRROR_API_SEARCH_MAX_RESULTS:50}
